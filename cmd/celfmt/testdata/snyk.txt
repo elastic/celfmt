@@ -112,10 +112,10 @@ state.with({
             ?"next": body.?links.next,
             // This could be
             //
-            //  size(body.data.items) == 0 ?
-            //    [item.?last_created.orValue(now)]
-            //  :
-            //    body.data.items[size(body.data.items)-1]
+            // 	size(body.data.items) == 0 ?
+            // 		[item.?last_created.orValue(now)]
+            // 	:
+            // 		body.data.items[size(body.data.items)-1]
             //
             // if sort_order=ASC is reliable.
             "last_created": body.data.items.map(item,
@@ -256,12 +256,12 @@ state.with(
 							"id": item.id,
 							?"next": body.?links.next,
 							// This could be
-							// 
-							// size(body.data.items) == 0 ?
-							// [item.?last_created.orValue(now)]
-							// :
-							// body.data.items[size(body.data.items)-1]
-							// 
+							//
+							// 	size(body.data.items) == 0 ?
+							// 		[item.?last_created.orValue(now)]
+							// 	:
+							// 		body.data.items[size(body.data.items)-1]
+							//
 							// if sort_order=ASC is reliable.
 							"last_created": body.data.items.map(item,
 								has(item.created),

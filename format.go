@@ -177,7 +177,23 @@ func (un *formatter) CommentBlock(id int64) []string {
 		}
 		un.comments[loc] = id
 		if comment != "" {
-			comments = append(comments, "// "+strings.TrimSpace(strings.TrimPrefix(comment, "//")))
+			// Remove comment prefix and any leading non-tab spaces.
+			comment = strings.TrimPrefix(comment, "//")
+			idx := strings.IndexFunc(comment, func(r rune) bool {
+				return r == '\t' || !unicode.IsSpace(r)
+			})
+			if idx >= 0 {
+				comment = comment[idx:]
+			}
+			// Remove all trailing white space.
+			comment = strings.TrimRight(comment, " \t\n\v\f\r\u0085\u00a0")
+			// Format comment with a leading space between text and mark.
+			if comment == "" {
+				comment = "//"
+			} else {
+				comment = "// " + comment
+			}
+			comments = append(comments, comment)
 			wasBlank = false
 		} else if !wasBlank {
 			comments = append(comments, "")
