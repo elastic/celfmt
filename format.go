@@ -426,9 +426,21 @@ func (un *formatter) visitCallFunc(expr ast.Expr, macro bool) error {
 			}
 		}
 		base := un.info.GetStartLocation(id).Line()
-		var last int
+		var (
+			last    int
+			wasTern bool
+		)
 		for i, arg := range args {
-			line := un.info.GetStartLocation(arg.ID()).Line()
+			var line int
+			lastLine := un.info.GetStartLocation(un.lastChild(arg).ID()).Line()
+			if arg.Kind() == ast.CallKind && arg.AsCall().FunctionName() == operators.Conditional {
+				line = un.info.GetStartLocation(arg.ID()).Line()
+				if line != lastLine {
+					wasTern = true
+				}
+			} else {
+				line = lastLine
+			}
 			if line != base {
 				break
 			}
@@ -449,6 +461,9 @@ func (un *formatter) visitCallFunc(expr ast.Expr, macro bool) error {
 			un.WriteString(",")
 		}
 		if last == len(args) {
+			if wasTern {
+				un.WriteNewLine()
+			}
 			un.WriteString(")")
 			return nil
 		}
