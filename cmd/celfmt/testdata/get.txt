@@ -1,0 +1,28 @@
+celfmt -i src.cel
+! stderr .
+cmp stdout want.txt
+
+-- src.cel --
+get("http://www.example.com/").drop([
+	"Header.Accept-Ranges",
+	"Header.Age",
+	"Header.Date",
+	"Header.Etag",
+	"Header.Cache-Control", "Header.Last-Modified", "Header.X-Cache",
+	"Header.Expires",
+	"Header.Server",
+])
+-- want.txt --
+get("http://www.example.com/").drop(
+	[
+		"Header.Accept-Ranges",
+		"Header.Age",
+		"Header.Date",
+		"Header.Etag",
+		"Header.Cache-Control",
+		"Header.Last-Modified",
+		"Header.X-Cache",
+		"Header.Expires",
+		"Header.Server",
+	]
+)

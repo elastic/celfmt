@@ -1,0 +1,81 @@
+celfmt -i src.cel
+! stderr .
+cmp stdout want.txt
+
+-- src.cel --
+// Bathroom sink; make sure we can
+//write multiple lines before the
+// object.
+
+{
+
+
+
+
+"aye": 12 <= 1, // false
+//  This is
+	// a
+	//  multi-line
+	// comment.
+  "eff": true ? "yes" //Comment will pin to the condition.
+  :
+    "no", // No?
+  "gee": false ?// This one too.
+    "yes" //Yes.
+  :
+    "no", // No!
+
+
+
+  // This is borked; the string literal cannot be in the gutter.
+
+  
+  // Not a huge problem, but it seems to be an issue with the AST's
+  // position information.
+  "long": 
+ br'''
+multi\n
+line
+text
+''',
+  "bee": {"dee": state.?a.orValue([]).size()},
+  //"see": foo(2, 3),
+  "el": [-1, 2, 4]+[8],
+}.as(obj, 
+	obj.el.map(e, e > 0, e).min())
+-- want.txt --
+// Bathroom sink; make sure we can
+// write multiple lines before the
+// object.
+
+{
+
+	"aye": 12 <= 1, // false
+	// This is
+	// a
+	// multi-line
+	// comment.
+	"eff": true ? // Comment will pin to the condition.
+		"yes"
+	:
+		"no", // No?
+	"gee": false ? // This one too.
+		"yes" // Yes.
+	:
+		"no", // No!
+
+	// This is borked; the string literal cannot be in the gutter.
+
+	// Not a huge problem, but it seems to be an issue with the AST's
+	// position information.
+	"long": br'''
+multi\n
+line
+text
+''',
+	"bee": {"dee": state.?a.orValue([]).size()},
+	// "see": foo(2, 3),
+	"el": [-1, 2, 4] + [8],
+}.as(obj,
+	obj.el.map(e, e > 0, e).min()
+)
