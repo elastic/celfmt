@@ -5,8 +5,10 @@ go 1.22.4
 require (
 	github.com/elastic/mito v1.13.0
 	github.com/google/cel-go v0.20.1
+	github.com/mailgun/raymond/v2 v2.0.48
 	github.com/rogpeppe/go-internal v1.8.1
 	google.golang.org/protobuf v1.33.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -23,5 +25,4 @@ require (
 	google.golang.org/genproto/googleapis/api v0.0.0-20230803162519-f966b187b2e5 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20230803162519-f966b187b2e5 // indirect
 	gopkg.in/errgo.v2 v2.1.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
