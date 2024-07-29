@@ -191,23 +191,24 @@ func findProgramYAML(s string) (prefix, program, suffix string, err error) {
 	}
 	idx++
 	prefix = s[:idx]
-	s = s[idx:]
-	err = yaml.Unmarshal([]byte(s), &yn)
+	program = s[idx:]
+	err = yaml.Unmarshal([]byte(program), &yn)
 	if err != nil {
 		return "", "", "", err
 	}
 	next := findNext(&yn, "program")
-	suffix = s
-	if next != nil {
-		for l := 1; l < next.Line; l++ {
-			var ok bool
-			_, suffix, ok = strings.Cut(suffix, "\n")
-			if !ok {
-				break
-			}
+	if next == nil {
+		return prefix, program, "", nil
+	}
+	suffix = s[idx:]
+	for l := 1; l < next.Line; l++ {
+		var ok bool
+		_, suffix, ok = strings.Cut(suffix, "\n")
+		if !ok {
+			break
 		}
 	}
-	program = strings.TrimSuffix(s, suffix)
+	program = strings.TrimSuffix(program, suffix)
 	return prefix, program, suffix, nil
 }
 
