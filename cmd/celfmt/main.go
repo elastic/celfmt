@@ -173,7 +173,11 @@ func findProgramYAML(s string) (prefix, program, suffix string, err error) {
 	var yn yaml.Node
 	idx := strings.Index(s, "\nprogram:")
 	if idx < 0 {
-		return
+		if !strings.HasPrefix(s, "program:") {
+			return
+		}
+		// idx is -1 so the inc that follows
+		// brings us to the start of the string.
 	}
 	idx++
 	prefix = s[:idx]
