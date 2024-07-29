@@ -102,21 +102,7 @@ func (v *visitor) VisitProgram(node *ast.Program) any {
 }
 
 func (v *visitor) VisitContent(s *ast.ContentStatement) any {
-	prefix, program, suffix, err := findProgramYAML(s.Original)
-	if err != nil {
-		v.err = err
-		return nil
-	}
-	if program != "" {
-		program, err = celFmtYAML(program)
-		if err != nil {
-			v.err = err
-			return nil
-		}
-		v.old = s.Original
-		v.new = prefix + program + suffix
-	}
-	prefix, program, suffix, err = findProgramYAML(s.Value)
+	prefix, program, suffix, err := findProgramYAML(s.Value)
 	if err != nil {
 		v.err = err
 		return nil
