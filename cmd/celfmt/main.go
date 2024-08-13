@@ -134,12 +134,10 @@ func celFmtYAML(src string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	n.Content[0].Content[1].Value = buf.String()
-	buf.Reset()
-	enc := yaml.NewEncoder(&buf)
-	enc.SetIndent(2)
-	err = enc.Encode(&n)
-	return buf.String(), err
+	// We should be able to do this properly, but there is no
+	// non-buggy YAML library that will not double-quote some
+	// programs.
+	return "program: |-\n  " + strings.ReplaceAll(buf.String(), "\n", "\n  ") + "\n", nil
 }
 
 func celFmt(dst io.Writer, src string) error {

@@ -1,0 +1,61 @@
+celfmt -agent -i src.cel
+! stderr .
+cmp stdout want.txt
+
+-- src.cel --
+program: |
+    (
+          state.with(request("GET", state.url.trim_right("/") + "/api/atlas/v2/groups/" + state.group_id + "/processes?pageNum=" + string(state.page_num) + "&itemsPerPage=100").with({
+            "Header": {
+              "Accept": ["application/vnd.atlas." + string(timestamp(now).getFullYear()) + "-01-01+json"]
+            }
+          }).do_request().as(resp, resp.StatusCode == 200 ? 
+            {}
+            :
+              {
+                    "events": {
+                      "error": {
+                        "code": string(resp.StatusCode),
+                        "id": string(resp.Status),
+                        "message": "GET:" + (
+                          size(resp.Body) != 0 ?
+                            string(resp.Body)
+                          :
+                            string(resp.Status) + " (" + string(resp.StatusCode) + ")"
+                        ),
+                      },
+                    },
+                  "want_more": false
+                }
+            ))
+    )
+-- want.txt --
+program: |-
+  state.with(
+  	request("GET", state.url.trim_right("/") + "/api/atlas/v2/groups/" + state.group_id + "/processes?pageNum=" + string(state.page_num) + "&itemsPerPage=100").with(
+  		{
+  			"Header": {
+  				"Accept": ["application/vnd.atlas." + string(timestamp(now).getFullYear()) + "-01-01+json"],
+  			},
+  		}
+  	).do_request().as(resp, (resp.StatusCode == 200) ?
+  		{}
+  	:
+  		{
+  			"events": {
+  				"error": {
+  					"code": string(resp.StatusCode),
+  					"id": string(resp.Status),
+  					"message": "GET:" + 
+  					(
+  						(size(resp.Body) != 0) ?
+  							string(resp.Body)
+  						:
+  							string(resp.Status) + " (" + string(resp.StatusCode) + ")"
+  					),
+  				},
+  			},
+  			"want_more": false,
+  		}
+  	)
+  )
