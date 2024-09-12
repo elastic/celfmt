@@ -3,6 +3,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -110,11 +111,33 @@ func (v *visitor) VisitContent(s *ast.ContentStatement) any {
 	if program != "" {
 		program, err = celFmtYAML(program)
 		if err != nil {
+			if errors.As(err, &warn{}) {
+				log.Printf("did not format program field content at line %d: %s", s.Line, err)
+				return nil
+			}
 			v.err = err
 			return nil
 		}
 		v.old = s.Value
 		v.new = prefix + program + suffix
+	}
+	return nil
+}
+
+func (v *visitor) VisitBlock(s *ast.BlockStatement) any {
+	p, ok := s.Expression.Path.(*ast.PathExpression)
+	if !ok || p.Original != "if" {
+		return nil
+	}
+	if s.Program != nil {
+		for _, n := range s.Program.Body {
+			n.Accept(v)
+		}
+	}
+	if s.Inverse != nil {
+		for _, n := range s.Inverse.Body {
+			n.Accept(v)
+		}
 	}
 	return nil
 }
@@ -132,13 +155,15 @@ func celFmtYAML(src string) (string, error) {
 	var buf strings.Builder
 	err = celFmt(&buf, n.Content[0].Content[1].Value)
 	if err != nil {
-		return "", err
+		return "", warn{err}
 	}
 	// We should be able to do this properly, but there is no
 	// non-buggy YAML library that will not double-quote some
 	// programs.
 	return "program: |-\n  " + strings.ReplaceAll(buf.String(), "\n", "\n  ") + "\n", nil
 }
+
+type warn struct{ error }
 
 func celFmt(dst io.Writer, src string) error {
 	env, err := cel.NewEnv(
@@ -169,9 +194,9 @@ func celFmt(dst io.Writer, src string) error {
 
 func findProgramYAML(s string) (prefix, program, suffix string, err error) {
 	var yn yaml.Node
-	idx := strings.Index(s, "\nprogram:")
+	idx := strings.Index(s, "\nprogram: |")
 	if idx < 0 {
-		if !strings.HasPrefix(s, "program:") {
+		if !strings.HasPrefix(s, "program: |") {
 			return
 		}
 		// idx is -1 so the inc that follows
@@ -223,7 +248,6 @@ func findNext(node *yaml.Node, tag string) *yaml.Node {
 
 // ¯\_(ツ)_/¯
 func (v *visitor) VisitMustache(*ast.MustacheStatement) any  { return nil }
-func (v *visitor) VisitBlock(*ast.BlockStatement) any        { return nil }
 func (v *visitor) VisitPartial(*ast.PartialStatement) any    { return nil }
 func (v *visitor) VisitComment(*ast.CommentStatement) any    { return nil }
 func (v *visitor) VisitExpression(*ast.Expression) any       { return nil }

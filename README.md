@@ -5,3 +5,5 @@ This contains a library function, `celfmt.Format` that can be used to canonicall
 The command can be installed with `go install github.com/efd6/celfmt/cmd/celfmt@latest`.
 
 `celfmt.Format` is forked from the original minifying formatter [here](https://pkg.go.dev/github.com/google/cel-go/parser#Unparse).
+
+The command may be used to format CEL programs in elastic agent integration configurations with some limitations. In particular, CEL programs MUST be included in YAML pipe string literals with the field name `program` starting from the first column of the line.
