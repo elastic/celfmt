@@ -72,7 +72,7 @@ func Main() int {
 			log.Printf("failed to format program: %v", err)
 			return 1
 		}
-		fmt.Println()
+		fmt.Fprintln(w)
 	} else {
 		ast, err := parser.Parse(buf.String())
 		if err != nil {
@@ -83,7 +83,7 @@ func Main() int {
 		if v.err != nil {
 			log.Fatal(v.err)
 		}
-		fmt.Print(strings.ReplaceAll(buf.String(), v.old, v.new))
+		fmt.Fprint(w, strings.ReplaceAll(buf.String(), v.old, v.new))
 	}
 
 	return 0
