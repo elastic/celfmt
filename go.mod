@@ -1,4 +1,4 @@
-module github.com/efd6/celfmt
+module github.com/elastic/celfmt
 
 go 1.22.4
 
