@@ -11,7 +11,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/efd6/celfmt"
+	"github.com/elastic/celfmt"
 	"github.com/elastic/mito/lib"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/checker/decls"
