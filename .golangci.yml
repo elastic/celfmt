@@ -1,0 +1,47 @@
+---
+
+run:
+  issues-exit-code: 1
+  modules-download-mode: readonly
+
+linters:
+  disable-all: true
+  enable:
+    - gosimple
+    - govet
+    - ineffassign
+    - staticcheck
+    - stylecheck
+    - typecheck
+    - unused
+    - errorlint
+    - gofumpt
+    - goimports
+    - godox
+    - misspell
+    - unconvert
+    - unused
+    - revive
+  fast: false
+
+linters-settings:
+  goimports:
+    local-prefixes: github.com/elastic/celfmt
+  gofumpt:
+    extra-rules: true
+  stylecheck:
+    checks:
+      - all
+
+issues:
+  include:
+   # If you're going to write a comment follow the conventions.
+   # https://go.dev/doc/effective_go#commentary.
+   # comment on exported (.+) should be of the form "(.+)..."
+   - EXC0014
+
+  exclude-rules:
+    # The capitalized errors strings in format.go originate in code
+    # cloned from google/cel-go to leave those as-is.
+    - path: format.go
+      text: 'ST1005: error strings should not be capitalized'

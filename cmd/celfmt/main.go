@@ -28,7 +28,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/elastic/celfmt"
 	"github.com/elastic/mito/lib"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/checker/decls"
@@ -36,6 +35,8 @@ import (
 	"github.com/mailgun/raymond/v2/ast"
 	"github.com/mailgun/raymond/v2/parser"
 	"gopkg.in/yaml.v3"
+
+	"github.com/elastic/celfmt"
 )
 
 func main() {
