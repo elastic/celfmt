@@ -1,0 +1,9 @@
+celfmt -i src.cel
+! stderr .
+cmp stdout want.txt
+
+-- src.cel --
+"<?xml vers... ...>".
+decode_xml()
+-- want.txt --
+"<?xml vers... ...>".decode_xml()
