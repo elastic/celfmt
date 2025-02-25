@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CEL Formatter</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        .header-grid {
+            display: grid;
+            grid-template-columns: 2fr 3fr 1fr;
+            align-items: center;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            margin-bottom: 20px;
+        }
+
+        .header-grid a {
+            color: #0073e6;
+            text-decoration: none;
+        }
+
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header-left img {
+            height: 40px;
+        }
+
+
+        .header-center {
+            font-size: 14px;
+        }
+
+        .header-right {
+            text-align: right;
+            font-size: 14px;
+        }
+
+        .header-right table {
+            width: auto;
+            margin-right: 0px;
+            margin-left: auto;
+            border-radius: 12px;
+            border: 1px solid lightgray;
+        }
+
+        .wrapper {
+            display: flex;
+            justify-content: space-between;
+            gap: 20px;
+        }
+
+        .input-area {
+            width: 48%;
+            height: 300px;
+            font-family: "Courier New", monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            border: 1px solid #ccc;
+            padding: 10px;
+            box-sizing: border-box;
+            resize: none;
+        }
+
+        .output-area {
+            width: 48%;
+            height: 300px;
+            font-family: "Courier New", monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            border: 1px solid #ccc;
+            padding: 10px;
+            box-sizing: border-box;
+            background-color: #f9f9f9;
+            resize: none;
+            color: #333;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .button {
+            padding: 10px 20px;
+            background-color: #ccc;
+            color: white;
+            border: none;
+            cursor: not-allowed;
+            font-size: 16px;
+            border-radius: 5px;
+            margin-top: 20px;
+            display: block;
+            width: 100%;
+        }
+
+        .button.enabled {
+            background-color: #4CAF50;
+            cursor: pointer;
+        }
+
+        .button:hover.enabled {
+            background-color: #45a049;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="header-grid">
+        <div class="header-left">
+            <img src="elastic-logo.svg" alt="Elastic Logo">
+            <h2>CEL Formatter</h2>
+        </div>
+        <div class="header-center">
+            <p>Learn more about writing Common Expression Language (CEL)
+                programs
+                in the <a
+                        href="https://www.elastic.co/guide/en/beats/filebeat/current/filebeat-input-cel.html"
+                        target="_blank">Filebeat</a>
+                documentation.
+            </p>
+        </div>
+        <div class="header-right">
+            <table>
+                <tbody>
+                <tr>
+                    <td>celftm:</td>
+                    <td><a id="celftm-version-link">unknown</a></td>
+                </tr>
+                <tr>
+                    <td>mito:</td>
+                    <td><a id="mito-version-link">unknown</a></td>
+                </tr>
+                <tr>
+                    <td>cel-go:</td>
+                    <td><a id="cel-go-version-link">unknown</a></td>
+                </tr>
+                <tr>
+                    <td>go:</td>
+                    <td><a id="go-version-link">unknown</a></td>
+                </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="wrapper">
+        <textarea id="input" class="input-area"
+                  placeholder="Enter your CEL program here..."></textarea>
+        <textarea id="output" class="output-area" readonly></textarea>
+    </div>
+    <button id="button" class="button" disabled>Format</button>
+</div>
+
+<script src="wasm_exec.js"></script>
+<script src="index.js"></script>
+
+</body>
+</html>
