@@ -183,6 +183,10 @@ func celFmtYAML(src string) (string, error) {
 type warn struct{ error }
 
 func celFmt(dst io.Writer, src string) error {
+	xmlHelper, err := lib.XML(nil, nil)
+	if err != nil {
+		return fmt.Errorf("failed to initialize xml helper: %w", err)
+	}
 	env, err := cel.NewEnv(
 		cel.Declarations(decls.NewVar("state", decls.Dyn)),
 		lib.Collections(),
@@ -196,6 +200,7 @@ func celFmt(dst io.Writer, src string) error {
 		lib.HTTP(nil, nil, nil),
 		lib.Limit(nil),
 		lib.Strings(),
+		xmlHelper,
 		cel.OptionalTypes(cel.OptionalTypesVersion(1)),
 		cel.EnableMacroCallTracking(),
 	)
