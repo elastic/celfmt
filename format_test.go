@@ -464,7 +464,6 @@ func TestFormat(t *testing.T) {
 			}
 			var buf strings.Builder
 			err = Format(&buf, p, src, test.unparserOptions...)
-
 			if err != nil {
 				t.Fatalf("Format(%s) failed: %v", test.in, err)
 			}
