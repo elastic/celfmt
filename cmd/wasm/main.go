@@ -174,8 +174,7 @@ func moduleBuildMetadata(_ js.Value, _ []js.Value) any {
 }
 
 func main() {
-	done := make(chan int, 0)
 	js.Global().Set("celFmt", js.FuncOf(celFmt))
 	js.Global().Set("celModuleBuildMetadata", js.FuncOf(moduleBuildMetadata))
-	<-done
+	select {}
 }
