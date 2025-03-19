@@ -35,7 +35,7 @@ class CelFormatter {
 
         // Git commit.
         if (metadata.commit) {
-            let a = document.getElementById("celftm-version-link");
+            let a = document.getElementById("celfmt-version-link");
             a.innerHTML = metadata.commit.substring(0, 7);
             a.href = "https://github.com/elastic/celfmt/commits/" + metadata.commit;
         }
