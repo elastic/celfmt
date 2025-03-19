@@ -3,7 +3,7 @@ module github.com/elastic/celfmt
 go 1.22.4
 
 require (
-	github.com/elastic/mito v1.16.0
+	github.com/elastic/mito v1.17.0
 	github.com/google/cel-go v0.20.1
 	github.com/mailgun/raymond/v2 v2.0.48
 	github.com/rogpeppe/go-internal v1.13.1

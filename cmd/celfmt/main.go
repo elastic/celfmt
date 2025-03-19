@@ -28,7 +28,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/elastic/celfmt"
 	"github.com/elastic/mito/lib"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/checker/decls"
@@ -36,6 +35,8 @@ import (
 	"github.com/mailgun/raymond/v2/ast"
 	"github.com/mailgun/raymond/v2/parser"
 	"gopkg.in/yaml.v3"
+
+	"github.com/elastic/celfmt"
 )
 
 func main() {
@@ -183,6 +184,10 @@ func celFmtYAML(src string) (string, error) {
 type warn struct{ error }
 
 func celFmt(dst io.Writer, src string) error {
+	xmlHelper, err := lib.XML(nil, nil)
+	if err != nil {
+		return fmt.Errorf("failed to initialize xml helper: %w", err)
+	}
 	env, err := cel.NewEnv(
 		cel.Declarations(decls.NewVar("state", decls.Dyn)),
 		lib.Collections(),
@@ -196,6 +201,7 @@ func celFmt(dst io.Writer, src string) error {
 		lib.HTTP(nil, nil, nil),
 		lib.Limit(nil),
 		lib.Strings(),
+		xmlHelper,
 		cel.OptionalTypes(cel.OptionalTypesVersion(1)),
 		cel.EnableMacroCallTracking(),
 	)
