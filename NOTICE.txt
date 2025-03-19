@@ -1,0 +1,7 @@
+elastic/celfmt
+Copyright 2024-2025 Elasticsearch B.V.
+
+This project includes software from github.com/google/cel-go, developed
+by Google LLC.
+
+Copyright 2019 Google LLC

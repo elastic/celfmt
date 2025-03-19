@@ -1,3 +1,20 @@
+// Licensed to Elasticsearch B.V. under one or more contributor
+// license agreements. See the NOTICE file distributed with
+// this work for additional information regarding copyright
+// ownership. Elasticsearch B.V. licenses this file to you under
+// the Apache License, Version 2.0 (the "License"); you may
+// not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 // The celfmt command formats a CEL program in a canonical format.
 package main
 
@@ -11,7 +28,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/efd6/celfmt"
 	"github.com/elastic/mito/lib"
 	"github.com/google/cel-go/cel"
 	"github.com/google/cel-go/checker/decls"
@@ -19,6 +35,8 @@ import (
 	"github.com/mailgun/raymond/v2/ast"
 	"github.com/mailgun/raymond/v2/parser"
 	"gopkg.in/yaml.v3"
+
+	"github.com/elastic/celfmt"
 )
 
 func main() {
@@ -166,6 +184,10 @@ func celFmtYAML(src string) (string, error) {
 type warn struct{ error }
 
 func celFmt(dst io.Writer, src string) error {
+	xmlHelper, err := lib.XML(nil, nil)
+	if err != nil {
+		return fmt.Errorf("failed to initialize xml helper: %w", err)
+	}
 	env, err := cel.NewEnv(
 		cel.Declarations(decls.NewVar("state", decls.Dyn)),
 		lib.Collections(),
@@ -179,6 +201,7 @@ func celFmt(dst io.Writer, src string) error {
 		lib.HTTP(nil, nil, nil),
 		lib.Limit(nil),
 		lib.Strings(),
+		xmlHelper,
 		cel.OptionalTypes(cel.OptionalTypesVersion(1)),
 		cel.EnableMacroCallTracking(),
 	)
