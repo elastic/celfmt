@@ -8,10 +8,10 @@ generate:
 
 # Builds the assets/celfmt.wasm module.
 build:
-    GOOS=js GOARCH=wasm go build -o assets/celfmt.wasm main.go
+    GOOS=js GOARCH=wasm go build -o assets/celfmt.wasm
 
 # Serve the contents of the assets directory and open a browser to that address.
-serve PORT: generate build
+serve PORT: build generate
     #!/usr/bin/env bash
     set -meuo pipefail
     python3 -m http.server --directory assets --bind 127.0.0.1 {{PORT}} &
