@@ -1,0 +1,54 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Build static files
+        id: build
+        run: |
+          BUILD_DIR="$(pwd)/../static_site"
+          mkdir -p "$BUILD_DIR"
+          
+          GOOS=js GOARCH=wasm go build -o "${BUILD_DIR}/celfmt.wasm" ./cmd/wasm/
+          GOOS=js GOARCH=wasm go generate -x -v ./cmd/wasm
+          
+          cp -p cmd/wasm/assets/* "$BUILD_DIR"
+          
+      - name: Upload static files as artifact
+        id: deployment
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ../static_site
+
+  deploy:
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

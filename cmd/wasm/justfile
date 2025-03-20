@@ -1,0 +1,20 @@
+# List available recipes.
+default:
+  @just --list
+
+# Run 'go generate' to copy wasm_exec.js to the assets directory.
+generate:
+    go generate -x ./...
+
+# Builds the assets/celfmt.wasm module.
+build:
+    GOOS=js GOARCH=wasm go build -o assets/celfmt.wasm
+
+# Serve the contents of the assets directory and open a browser to that address.
+serve PORT: build generate
+    #!/usr/bin/env bash
+    set -meuo pipefail
+    python3 -m http.server --directory assets --bind 127.0.0.1 {{PORT}} &
+    sleep 1
+    open http://127.0.0.1:{{PORT}}
+    fg %1
