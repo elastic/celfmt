@@ -1,5 +1,5 @@
 const CEL_PROGRAM_DEFAULT_VALUE = `// Example CEL program
-bytes(get(state.url).Body).as(body, {
+get(state.url).Body.as(body, {
   "events": [body.decode_json()]
 })
 `;
