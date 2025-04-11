@@ -5,8 +5,8 @@ github.com/antlr4-go/antlr/v4 v4.13.0/go.mod h1:pfChB/xh/Unjila75QW7+VU4TSnWnnk9
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/elastic/mito v1.17.1 h1:AOpNUnr3sNMKORqOyBVTtPvLMw024682vCWxOu0kVms=
-github.com/elastic/mito v1.17.1/go.mod h1:fAVRjgTSaheI4qjWprqxYjFBkqSxCbNo1XQ99LlMOFw=
+github.com/elastic/mito v1.18.0 h1:WlNIQMJDlw0fbqh20n97YBCzvXA0MO1gntMAjGWbepI=
+github.com/elastic/mito v1.18.0/go.mod h1:fAVRjgTSaheI4qjWprqxYjFBkqSxCbNo1XQ99LlMOFw=
 github.com/golang/protobuf v1.5.0/go.mod h1:FsONVRAS9T7sI+LIUmWTfcYkHO4aIWwzhcaSAoJOfIk=
 github.com/golang/protobuf v1.5.3 h1:KhyjKVUg7Usr/dYsdSqoFveMYd5ko72D+zANwlG1mmg=
 github.com/golang/protobuf v1.5.3/go.mod h1:XVQd3VNwM+JqD3oG2Ue2ip4fOMUkwXdXDdiuN0vRsmY=
