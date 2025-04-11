@@ -43,6 +43,8 @@ func main() {
 	os.Exit(Main())
 }
 
+// Main is the entry point for the celfmt command. It formats a CEL program
+// in a canonical format. It returns 0 on success and 1 on failure.
 func Main() int {
 	in := flag.String("i", "", "input file stdin if empty")
 	out := flag.String("o", "", "output file stdout if empty")
