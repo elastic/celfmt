@@ -5,11 +5,11 @@ go 1.23.0
 toolchain go1.24.2
 
 require (
-	github.com/elastic/mito v1.17.1
+	github.com/elastic/mito v1.18.0
 	github.com/google/cel-go v0.20.1
 	github.com/mailgun/raymond/v2 v2.0.48
 	github.com/rogpeppe/go-internal v1.14.1
-	google.golang.org/protobuf v1.33.0
+	google.golang.org/protobuf v1.36.6
 	gopkg.in/yaml.v3 v3.0.1
 )
 
