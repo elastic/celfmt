@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+// Package celfmt provides formatting for CEL programs.
 package celfmt
 
 import (
@@ -1029,6 +1030,7 @@ type unparserOption struct {
 	alwaysComma          bool
 }
 
+// Pretty enables pretty printing of the output expression.
 func Pretty() FormatOption {
 	return func(opt *unparserOption) (*unparserOption, error) {
 		opt.pretty = true
@@ -1036,6 +1038,7 @@ func Pretty() FormatOption {
 	}
 }
 
+// AlwaysComma forces a comma to be printed after the last element of a list or map.
 func AlwaysComma() FormatOption {
 	return func(opt *unparserOption) (*unparserOption, error) {
 		opt.alwaysComma = true

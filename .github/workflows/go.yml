@@ -28,7 +28,6 @@ jobs:
         uses: golangci/golangci-lint-action@1481404843c368bc19ca9406f87d6e0fc97bdcfd # v7
         with:
           version: latest
-          only-new-issues: true
 
       - name: Verify go.mod and go.sum are clean
         run: |
