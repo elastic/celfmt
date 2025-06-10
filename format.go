@@ -50,6 +50,7 @@ func Format(dst io.Writer, ast *ast.AST, src common.Source, opts ...FormatOption
 		wrapOnColumn:         defaultWrapOnColumn,
 		wrapAfterColumnLimit: defaultWrapAfterColumnLimit,
 		operatorsToWrapOn:    defaultOperatorsToWrapOn,
+		indent:               defaultIndentString,
 	}
 
 	var err error
@@ -61,7 +62,7 @@ func Format(dst io.Writer, ast *ast.AST, src common.Source, opts ...FormatOption
 	}
 	expr := ast.Expr()
 	un := &formatter{
-		dst:      lenWriter{w: dst},
+		dst:      lenWriter{w: dst, indent: unparserOpts.indent},
 		src:      src,
 		info:     ast.SourceInfo(),
 		options:  unparserOpts,
@@ -94,6 +95,7 @@ type lenWriter struct {
 	len int
 
 	prefix bytes.Buffer
+	indent string
 }
 
 func (w *lenWriter) WriteString(s string) (int, error) {
@@ -117,7 +119,7 @@ func (w *lenWriter) WriteString(s string) (int, error) {
 
 func (w *lenWriter) WriteNewLine(indent int) (int, error) {
 	w.prefix.Reset()
-	n, err := w.prefix.WriteString("\n" + strings.Repeat("\t", indent))
+	n, err := w.prefix.WriteString("\n" + strings.Repeat(w.indent, indent))
 	w.len += n
 	return n, err
 }
@@ -836,7 +838,6 @@ func (un *formatter) visitMaybeMacroCall(expr ast.Expr) (bool, error) {
 func (un *formatter) visitMaybeNested(expr ast.Expr, nested bool) error {
 	if un.isMultiline(expr) {
 		if nested {
-			un.WriteNewLine()
 			un.indent++
 			un.WriteString("(")
 			un.WriteNewLine()
@@ -1011,6 +1012,7 @@ func (un *formatter) writeOperatorWithWrapping(fun, unmangled string) bool {
 var (
 	defaultWrapOnColumn         = 80
 	defaultWrapAfterColumnLimit = true
+	defaultIndentString         = "\t"
 	defaultOperatorsToWrapOn    = map[string]bool{
 		operators.LogicalAnd: true,
 		operators.LogicalOr:  true,
@@ -1021,13 +1023,16 @@ var (
 // of the Unparse function.
 type FormatOption func(*unparserOption) (*unparserOption, error)
 
-// Internal representation of the UnparserOption type
+// Internal representation of the UnparserOption type plus a sneaky output option.
 type unparserOption struct {
 	wrapOnColumn         int
 	operatorsToWrapOn    map[string]bool
 	wrapAfterColumnLimit bool
 	pretty               bool
 	alwaysComma          bool
+
+	// indent is the string to be repeated for indented lines.
+	indent string
 }
 
 // Pretty enables pretty printing of the output expression.
@@ -1042,6 +1047,17 @@ func Pretty() FormatOption {
 func AlwaysComma() FormatOption {
 	return func(opt *unparserOption) (*unparserOption, error) {
 		opt.alwaysComma = true
+		return opt, nil
+	}
+}
+
+// IndentString sets the string to use to indent lines. If not set this defaults
+// to "\t".
+func IndentString(s string) FormatOption {
+	return func(opt *unparserOption) (*unparserOption, error) {
+		if s != "" {
+			opt.indent = s
+		}
 		return opt, nil
 	}
 }
