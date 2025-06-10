@@ -87,7 +87,7 @@ func Main() int {
 	}
 
 	if !*agent {
-		err = celFmt(w, buf.String())
+		err = celFmt(w, buf.String(), "")
 		if err != nil {
 			log.Printf("failed to format program: %v", err)
 			return 1
@@ -98,7 +98,7 @@ func Main() int {
 		if err != nil {
 			panic(err)
 		}
-		v := &visitor{}
+		v := &visitor{indent: "  "}
 		ast.Accept(v)
 		if v.err != nil {
 			log.Fatal(v.err)
@@ -110,9 +110,10 @@ func Main() int {
 }
 
 type visitor struct {
-	old string
-	new string
-	err error
+	old    string
+	new    string
+	indent string
+	err    error
 }
 
 func (v *visitor) VisitProgram(node *ast.Program) any {
@@ -129,7 +130,7 @@ func (v *visitor) VisitContent(s *ast.ContentStatement) any {
 		return nil
 	}
 	if program != "" {
-		program, err = celFmtYAML(program)
+		program, err = celFmtYAML(program, v.indent)
 		if err != nil {
 			if errors.As(err, &warn{}) {
 				log.Printf("did not format program field content at line %d: %s", s.Line, err)
@@ -162,7 +163,7 @@ func (v *visitor) VisitBlock(s *ast.BlockStatement) any {
 	return nil
 }
 
-func celFmtYAML(src string) (string, error) {
+func celFmtYAML(src, indent string) (string, error) {
 	var n yaml.Node
 	err := yaml.Unmarshal([]byte(src), &n)
 	if err != nil {
@@ -173,7 +174,7 @@ func celFmtYAML(src string) (string, error) {
 	}
 
 	var buf strings.Builder
-	err = celFmt(&buf, n.Content[0].Content[1].Value)
+	err = celFmt(&buf, n.Content[0].Content[1].Value, indent)
 	if err != nil {
 		return "", warn{err}
 	}
@@ -185,7 +186,7 @@ func celFmtYAML(src string) (string, error) {
 
 type warn struct{ error }
 
-func celFmt(dst io.Writer, src string) error {
+func celFmt(dst io.Writer, src, indent string) error {
 	xmlHelper, err := lib.XML(nil, nil)
 	if err != nil {
 		return fmt.Errorf("failed to initialize xml helper: %w", err)
@@ -214,7 +215,14 @@ func celFmt(dst io.Writer, src string) error {
 	if iss != nil {
 		return fmt.Errorf("failed to parse program: %v", iss)
 	}
-	return celfmt.Format(dst, ast.NativeRep(), common.NewTextSource(src), celfmt.Pretty(), celfmt.AlwaysComma())
+	opts := []celfmt.FormatOption{
+		celfmt.Pretty(),
+		celfmt.AlwaysComma(),
+	}
+	if indent != "" {
+		opts = append(opts, celfmt.IndentString(indent))
+	}
+	return celfmt.Format(dst, ast.NativeRep(), common.NewTextSource(src), opts...)
 }
 
 func findProgramYAML(s string) (prefix, program, suffix string, err error) {
