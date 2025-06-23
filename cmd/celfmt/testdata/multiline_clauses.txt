@@ -1,0 +1,26 @@
+celfmt -i src.cel
+! stderr .
+cmp stdout want.txt
+
+-- src.cel --
+true.as(t,
+	t.as(very_long_label_that_spans_too_long_of_the_screen_no_really_it_does_far_too_much_even_more_than_in_a_java_code_base,
+		very_long_label_that_spans_too_long_of_the_screen_no_really_it_does_far_too_much_even_more_than_in_a_java_code_base ||
+		very_long_label_that_spans_too_long_of_the_screen_no_really_it_does_far_too_much_even_more_than_in_a_java_code_base ?
+			1
+		:
+			0
+	)
+)
+-- want.txt --
+true.as(t,
+	t.as(very_long_label_that_spans_too_long_of_the_screen_no_really_it_does_far_too_much_even_more_than_in_a_java_code_base,
+		(
+			very_long_label_that_spans_too_long_of_the_screen_no_really_it_does_far_too_much_even_more_than_in_a_java_code_base ||
+			very_long_label_that_spans_too_long_of_the_screen_no_really_it_does_far_too_much_even_more_than_in_a_java_code_base
+		) ?
+			1
+		:
+			0
+	)
+)

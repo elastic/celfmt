@@ -992,11 +992,19 @@ func (un *formatter) writeOperatorWithWrapping(fun, unmangled string) bool {
 			// Output: a &&\nb
 			un.WriteString(" ")
 			un.WriteString(unmangled)
-			un.WriteString("\n")
+			if un.options.pretty {
+				un.WriteNewLine()
+			} else {
+				un.WriteString("\n")
+			}
 		} else {
 			// Input: a && b
 			// Output: a\n&& b
-			un.WriteString("\n")
+			if un.options.pretty {
+				un.WriteNewLine()
+			} else {
+				un.WriteString("\n")
+			}
 			un.WriteString(unmangled)
 			un.WriteString(" ")
 		}
