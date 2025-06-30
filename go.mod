@@ -1,11 +1,11 @@
 module github.com/elastic/celfmt
 
-go 1.23.0
+go 1.23.10
 
 toolchain go1.24.4
 
 require (
-	github.com/elastic/mito v1.19.0
+	github.com/elastic/mito v1.20.0
 	github.com/google/cel-go v0.20.1
 	github.com/mailgun/raymond/v2 v2.0.48
 	github.com/rogpeppe/go-internal v1.14.1
@@ -16,8 +16,10 @@ require (
 require (
 	aqwari.net/xml v0.0.0-20210331023308-d9421b293817 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
+	github.com/aws/aws-sdk-go v1.55.7 // indirect
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/uuid v1.3.0 // indirect
+	github.com/jmespath/go-jmespath v0.4.0 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/stoewer/go-strcase v1.2.0 // indirect
 	golang.org/x/exp v0.0.0-20230515195305-f3d0a9c9a5cc // indirect
