@@ -30,8 +30,9 @@ import (
 
 	"github.com/elastic/mito/lib"
 	"github.com/google/cel-go/cel"
-	"github.com/google/cel-go/checker/decls"
 	"github.com/google/cel-go/common"
+	"github.com/google/cel-go/common/decls"
+	"github.com/google/cel-go/common/types"
 	"github.com/mailgun/raymond/v2/ast"
 	"github.com/mailgun/raymond/v2/parser"
 	"gopkg.in/yaml.v3"
@@ -192,7 +193,7 @@ func celFmt(dst io.Writer, src, indent string) error {
 		return fmt.Errorf("failed to initialize xml helper: %w", err)
 	}
 	env, err := cel.NewEnv(
-		cel.Declarations(decls.NewVar("state", decls.Dyn)),
+		cel.VariableDecls(decls.NewVariable("state", types.DynType)),
 		lib.Collections(),
 		lib.Crypto(),
 		lib.JSON(nil),
