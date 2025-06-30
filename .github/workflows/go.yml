@@ -29,6 +29,14 @@ jobs:
         with:
           version: latest
 
+      - name: golangci-lint js/wasm
+        uses: golangci/golangci-lint-action@4afd733a84b1f43292c63897423277bb7f4313a9 # v8
+        env:
+          GOOS: js
+          GOARCH: wasm
+        with:
+          version: latest
+
       - name: Verify go.mod and go.sum are clean
         run: |
           go mod tidy
