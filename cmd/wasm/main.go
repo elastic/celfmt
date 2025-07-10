@@ -49,6 +49,7 @@ import (
 	"github.com/google/cel-go/common"
 	"github.com/google/cel-go/common/decls"
 	"github.com/google/cel-go/common/types"
+	"github.com/google/cel-go/ext"
 
 	"github.com/elastic/celfmt"
 )
@@ -74,7 +75,8 @@ func compileAndFormat(dst io.Writer, src string) error {
 		lib.Limit(nil),
 		lib.Strings(),
 		xmlHelper,
-		cel.OptionalTypes(cel.OptionalTypesVersion(1)),
+		cel.OptionalTypes(cel.OptionalTypesVersion(lib.OptionalTypesVersion)),
+		ext.TwoVarComprehensions(ext.TwoVarComprehensionsVersion(lib.OptionalTypesVersion)),
 		cel.EnableMacroCallTracking(),
 	)
 	if err != nil {
