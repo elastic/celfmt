@@ -54,7 +54,7 @@ import (
 	"github.com/elastic/celfmt"
 )
 
-//go:generate cp "$GOROOT/lib/wasm/wasm_exec.js" "$PWD/assets"
+//go:generate install -m 0744 "$GOROOT/lib/wasm/wasm_exec.js" "$PWD/assets"
 
 func compileAndFormat(dst io.Writer, src string) error {
 	xmlHelper, err := lib.XML(nil, nil)
