@@ -4,7 +4,7 @@ default:
 
 # Run 'go generate' to copy wasm_exec.js to the assets directory.
 generate:
-    go generate -x ./...
+    GOOS=js GOARCH=wasm go generate -x ./...
 
 # Builds the assets/celfmt.wasm module.
 build:
