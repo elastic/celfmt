@@ -1,0 +1,12 @@
+celfmt -i src.cel
+! stderr .
+cmp stdout want.txt
+
+-- src.cel --
+sprintf(
+   "Hello, %s!", ["World"])
+-- want.txt --
+sprintf(
+	"Hello, %s!",
+	["World"]
+)

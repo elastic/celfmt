@@ -207,6 +207,7 @@ func celFmt(dst io.Writer, src, indent string) error {
 		lib.Limit(nil),
 		lib.Regexp(nil),
 		lib.Strings(),
+		lib.Printf(),
 		xmlHelper,
 		cel.OptionalTypes(cel.OptionalTypesVersion(lib.OptionalTypesVersion)),
 		ext.TwoVarComprehensions(ext.TwoVarComprehensionsVersion(lib.OptionalTypesVersion)),

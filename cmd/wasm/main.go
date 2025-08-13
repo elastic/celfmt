@@ -74,6 +74,7 @@ func compileAndFormat(dst io.Writer, src string) error {
 		lib.HTTP(nil, nil, nil),
 		lib.Limit(nil),
 		lib.Strings(),
+		lib.Printf(),
 		xmlHelper,
 		cel.OptionalTypes(cel.OptionalTypesVersion(lib.OptionalTypesVersion)),
 		ext.TwoVarComprehensions(ext.TwoVarComprehensionsVersion(lib.OptionalTypesVersion)),
