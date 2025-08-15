@@ -73,6 +73,7 @@ func compileAndFormat(dst io.Writer, src string) error {
 		lib.MIME(nil),
 		lib.HTTP(nil, nil, nil),
 		lib.Limit(nil),
+		lib.Regexp(nil),
 		lib.Strings(),
 		lib.Printf(),
 		xmlHelper,
