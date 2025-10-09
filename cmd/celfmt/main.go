@@ -235,7 +235,7 @@ func findProgramYAML(s string) (prefix, program, suffix string, err error) {
 	idx := strings.Index(s, "\nprogram: |")
 	if idx < 0 {
 		if !strings.HasPrefix(s, "program: |") {
-			return
+			return prefix, program, suffix, err
 		}
 		// idx is -1 so the inc that follows
 		// brings us to the start of the string.
