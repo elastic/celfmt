@@ -5,7 +5,7 @@ go 1.24.0
 toolchain go1.25.2
 
 require (
-	github.com/elastic/mito v1.22.0
+	github.com/elastic/mito v1.23.0
 	github.com/google/cel-go v0.25.0
 	github.com/mailgun/raymond/v2 v2.0.48
 	github.com/rogpeppe/go-internal v1.14.1
