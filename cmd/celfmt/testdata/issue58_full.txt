@@ -1,0 +1,44 @@
+celfmt -i src.cel -o out1.cel
+! stderr .
+
+# Run celfmt again to verify idempotency
+celfmt -i out1.cel -o out2.cel
+! stderr .
+
+# And a third time (the original bug was progressive comment eating)
+celfmt -i out2.cel -o out3.cel
+! stderr .
+
+# All outputs should be identical
+cmp out1.cel out2.cel
+cmp out2.cel out3.cel
+
+# Output should match expected format
+cmp out1.cel want.txt
+
+-- src.cel --
+state.as(state,
+	(
+		// Ensure that we bring the current type up to the current time,
+		// even if we did not get any content for the query period.
+		has(state.?work.curr_type) && state.?cursor.last_for.optMap(last_for,
+			last_for.exists(k, k == "test")
+		).orValue(false) && !state.work.todo_type.exists(t, t == state.work.curr_type)
+	) ?
+		state.with({"work": state.work})
+	:
+		state
+)
+-- want.txt --
+state.as(state,
+	(
+		// Ensure that we bring the current type up to the current time,
+		// even if we did not get any content for the query period.
+		has(state.?work.curr_type) && state.?cursor.last_for.optMap(last_for,
+			last_for.exists(k, k == "test")
+		).orValue(false) && !state.work.todo_type.exists(t, t == state.work.curr_type)
+	) ?
+		state.with({"work": state.work})
+	:
+		state
+)
