@@ -136,7 +136,6 @@ func (v *visitor) VisitContent(s *ast.ContentStatement) any {
 		if err != nil {
 			if errors.As(err, &warn{}) {
 				log.Printf("did not format program field content at line %d: %s", s.Line, err)
-				return nil
 			}
 			v.err = err
 			return nil

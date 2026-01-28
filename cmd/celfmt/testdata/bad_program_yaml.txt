@@ -1,0 +1,7 @@
+! celfmt -agent -i src.cel
+! stdout .
+stderr 'undeclared reference to ''bad_program'''
+
+-- src.cel --
+program: |-
+  bad_program()
