@@ -836,7 +836,13 @@ func (un *formatter) visitMaybeMacroCall(expr ast.Expr) (bool, error) {
 }
 
 func (un *formatter) visitMaybeNested(expr ast.Expr, nested bool) error {
-	if un.isMultiline(expr) {
+	// Use multiline format if the expression spans multiple lines OR if it has
+	// preceding comments (which would span multiple lines when written).
+	// We check the entire expression tree for comments since comments may be
+	// associated with descendant expressions.
+	multiline := un.isMultiline(expr) || (nested && un.hasCommentsInTree(expr))
+
+	if multiline {
 		if nested {
 			un.indent++
 			un.WriteString("(")
@@ -871,6 +877,92 @@ func (un *formatter) isMultiline(expr ast.Expr) bool {
 	start := un.info.GetStartLocation(expr.ID())
 	stop := un.info.GetStopLocation(un.lastChild(expr).ID())
 	return start.Line() != stop.Line()
+}
+
+// hasCommentsInTree returns whether there are unclaimed comments preceding this
+// expression or any of its descendant expressions. This is used to decide
+// whether to use multiline format for nested expressions.
+func (un *formatter) hasCommentsInTree(expr ast.Expr) bool {
+	if !un.options.pretty {
+		return false
+	}
+	return un.hasCommentsForExpr(expr.ID()) || un.hasCommentsInDescendants(expr)
+}
+
+// hasCommentsForExpr returns whether there are unclaimed comments directly
+// preceding the expression with the given ID.
+func (un *formatter) hasCommentsForExpr(id int64) bool {
+	if !un.options.pretty {
+		return false
+	}
+	start := un.info.GetStartLocation(id)
+	first := true
+	for line := start.Line(); line > 0; line-- {
+		text, ok := un.src.Snippet(line)
+		comment := strings.TrimSpace(text)
+		if !ok || (comment != "" && !strings.HasPrefix(comment, "//")) {
+			if first {
+				first = false
+				continue
+			}
+			break
+		}
+		first = false
+		loc := location{line, strings.Index(text, comment)}
+		if cid, ok := un.comments[loc]; ok {
+			if cid != id {
+				return false
+			}
+			break
+		}
+		if comment != "" {
+			return true
+		}
+	}
+	return false
+}
+
+// hasCommentsInDescendants returns whether any descendant expression has
+// unclaimed comments.
+func (un *formatter) hasCommentsInDescendants(expr ast.Expr) bool {
+	switch expr.Kind() {
+	case ast.CallKind:
+		c := expr.AsCall()
+		if c.IsMemberFunction() {
+			if un.hasCommentsInTree(c.Target()) {
+				return true
+			}
+		}
+		for _, arg := range c.Args() {
+			if un.hasCommentsInTree(arg) {
+				return true
+			}
+		}
+	case ast.ListKind:
+		for _, elem := range expr.AsList().Elements() {
+			if un.hasCommentsInTree(elem) {
+				return true
+			}
+		}
+	case ast.MapKind:
+		for _, entry := range expr.AsMap().Entries() {
+			e := entry.AsMapEntry()
+			if un.hasCommentsInTree(e.Key()) || un.hasCommentsInTree(e.Value()) {
+				return true
+			}
+		}
+	case ast.SelectKind:
+		if un.hasCommentsInTree(expr.AsSelect().Operand()) {
+			return true
+		}
+	case ast.StructKind:
+		for _, field := range expr.AsStruct().Fields() {
+			if un.hasCommentsInTree(field.AsStructField().Value()) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (un *formatter) lastChild(expr ast.Expr) ast.Expr {

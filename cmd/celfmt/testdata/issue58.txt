@@ -1,0 +1,26 @@
+celfmt -i src.cel
+! stderr .
+cmp stdout want.txt
+
+-- src.cel --
+state.as(state,
+	(
+		// First comment line.
+		// Second comment line.
+		has(state.a) && state.b > 0
+	) ?
+		state.c
+	:
+		state.d
+)
+-- want.txt --
+state.as(state,
+	(
+		// First comment line.
+		// Second comment line.
+		has(state.a) && state.b > 0
+	) ?
+		state.c
+	:
+		state.d
+)

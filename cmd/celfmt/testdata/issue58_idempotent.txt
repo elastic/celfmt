@@ -1,0 +1,21 @@
+celfmt -i src.cel -o out1.cel
+! stderr .
+
+# Run celfmt again on the output to verify idempotency
+celfmt -i out1.cel -o out2.cel
+! stderr .
+
+# The two outputs should be identical
+cmp out1.cel out2.cel
+
+-- src.cel --
+state.as(state,
+	(
+		// First comment line.
+		// Second comment line.
+		has(state.a) && state.b > 0
+	) ?
+		state.c
+	:
+		state.d
+)
