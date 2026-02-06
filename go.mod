@@ -6,7 +6,7 @@ toolchain go1.25.7
 
 require (
 	github.com/elastic/mito v1.24.1
-	github.com/google/cel-go v0.25.0
+	github.com/google/cel-go v0.27.0
 	github.com/mailgun/raymond/v2 v2.0.48
 	github.com/rogpeppe/go-internal v1.14.1
 	google.golang.org/protobuf v1.36.11
@@ -15,8 +15,8 @@ require (
 
 require (
 	aqwari.net/xml v0.0.0-20210331023308-d9421b293817 // indirect
-	cel.dev/expr v0.23.1 // indirect
-	github.com/antlr4-go/antlr/v4 v4.13.0 // indirect
+	cel.dev/expr v0.25.1 // indirect
+	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.36.5 // indirect
 	github.com/aws/aws-sdk-go-v2/config v1.29.17 // indirect
 	github.com/aws/aws-sdk-go-v2/credentials v1.17.70 // indirect
@@ -33,8 +33,7 @@ require (
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
-	github.com/stoewer/go-strcase v1.2.0 // indirect
-	golang.org/x/exp v0.0.0-20230515195305-f3d0a9c9a5cc // indirect
+	golang.org/x/exp v0.0.0-20240823005443-9b4947da3948 // indirect
 	golang.org/x/net v0.38.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
