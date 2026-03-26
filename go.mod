@@ -1,11 +1,11 @@
 module github.com/elastic/celfmt
 
-go 1.24.0
+go 1.25.0
 
 toolchain go1.26.1
 
 require (
-	github.com/elastic/mito v1.24.1
+	github.com/elastic/mito v1.25.1
 	github.com/google/cel-go v0.27.0
 	github.com/mailgun/raymond/v2 v2.0.48
 	github.com/rogpeppe/go-internal v1.14.1
@@ -40,6 +40,6 @@ require (
 	golang.org/x/time v0.0.0-20220224211638-0e9765cccd65 // indirect
 	golang.org/x/tools v0.26.0 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20240826202546-f6391c0de4c7 // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20240826202546-f6391c0de4c7 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260319201613-d00831a3d3e7 // indirect
 	gopkg.in/check.v1 v1.0.0-20180628173108-788fd7840127 // indirect
 )
