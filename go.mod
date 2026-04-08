@@ -6,7 +6,7 @@ toolchain go1.26.2
 
 require (
 	github.com/elastic/mito v1.25.1
-	github.com/google/cel-go v0.27.0
+	github.com/google/cel-go v0.28.0
 	github.com/mailgun/raymond/v2 v2.0.48
 	github.com/rogpeppe/go-internal v1.14.1
 	google.golang.org/protobuf v1.36.11
