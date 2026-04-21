@@ -1,0 +1,31 @@
+celfmt -i src.cel -o out1.cel
+! stderr .
+cmp out1.cel want.txt
+
+# Verify idempotency — the original bug ate the comment on the second pass.
+celfmt -i out1.cel -o out2.cel
+! stderr .
+cmp out1.cel out2.cel
+
+-- src.cel --
+state.a ?
+	state.b
+: state.c ?
+	state.d
+:
+	// comment
+	state.e ?
+		state.f
+	:
+		state.g
+-- want.txt --
+state.a ?
+	state.b
+: state.c ?
+	state.d
+:
+	// comment
+	state.e ?
+		state.f
+	:
+		state.g

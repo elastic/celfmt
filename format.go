@@ -366,7 +366,8 @@ func (un *formatter) visitCallConditional(expr ast.Expr) error {
 		un.WriteString(un.Comment(args[1].ID()))
 		un.WriteNewLine()
 		un.WriteString(":")
-		cuddle := args[2].Kind() == ast.CallKind && args[2].AsCall().FunctionName() == operators.Conditional
+		cuddle := args[2].Kind() == ast.CallKind && args[2].AsCall().FunctionName() == operators.Conditional &&
+			!un.hasCommentsForExpr(args[2].ID())
 		if cuddle {
 			un.WriteString(" ")
 		} else {
