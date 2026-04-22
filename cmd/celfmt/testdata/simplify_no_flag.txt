@@ -1,0 +1,8 @@
+celfmt -i src.cel
+! stderr .
+cmp stdout want.txt
+
+-- src.cel --
+state.x == true
+-- want.txt --
+state.x == true

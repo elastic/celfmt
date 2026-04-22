@@ -51,6 +51,7 @@ func Main() int {
 	in := flag.String("i", "", "input file stdin if empty")
 	out := flag.String("o", "", "output file stdout if empty")
 	agent := flag.Bool("agent", false, "format agent config")
+	simplify := flag.Bool("s", false, "simplify expressions")
 	flag.Parse()
 
 	var r io.Reader
@@ -89,7 +90,7 @@ func Main() int {
 	}
 
 	if !*agent {
-		err = celFmt(w, buf.String(), "")
+		err = celFmt(w, buf.String(), "", *simplify)
 		if err != nil {
 			log.Printf("failed to format program: %v", err)
 			return 1
@@ -100,7 +101,7 @@ func Main() int {
 		if err != nil {
 			panic(err)
 		}
-		v := &visitor{indent: "  "}
+		v := &visitor{indent: "  ", simplify: *simplify}
 		ast.Accept(v)
 		if v.err != nil {
 			log.Fatal(v.err)
@@ -112,10 +113,11 @@ func Main() int {
 }
 
 type visitor struct {
-	old    string
-	new    string
-	indent string
-	err    error
+	old      string
+	new      string
+	indent   string
+	simplify bool
+	err      error
 }
 
 func (v *visitor) VisitProgram(node *ast.Program) any {
@@ -132,7 +134,7 @@ func (v *visitor) VisitContent(s *ast.ContentStatement) any {
 		return nil
 	}
 	if program != "" {
-		program, err = celFmtYAML(program, v.indent)
+		program, err = celFmtYAML(program, v.indent, v.simplify)
 		if err != nil {
 			if errors.As(err, &warn{}) {
 				log.Printf("did not format program field content at line %d: %s", s.Line, err)
@@ -164,7 +166,7 @@ func (v *visitor) VisitBlock(s *ast.BlockStatement) any {
 	return nil
 }
 
-func celFmtYAML(src, indent string) (string, error) {
+func celFmtYAML(src, indent string, simplify bool) (string, error) {
 	var n yaml.Node
 	err := yaml.Unmarshal([]byte(src), &n)
 	if err != nil {
@@ -175,7 +177,7 @@ func celFmtYAML(src, indent string) (string, error) {
 	}
 
 	var buf strings.Builder
-	err = celFmt(&buf, n.Content[0].Content[1].Value, indent)
+	err = celFmt(&buf, n.Content[0].Content[1].Value, indent, simplify)
 	if err != nil {
 		return "", warn{err}
 	}
@@ -187,7 +189,7 @@ func celFmtYAML(src, indent string) (string, error) {
 
 type warn struct{ error }
 
-func celFmt(dst io.Writer, src, indent string) error {
+func celFmt(dst io.Writer, src, indent string, simplify bool) error {
 	xmlHelper, err := lib.XML(nil, nil)
 	if err != nil {
 		return fmt.Errorf("failed to initialize xml helper: %w", err)
@@ -215,9 +217,12 @@ func celFmt(dst io.Writer, src, indent string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create env: %w", err)
 	}
-	ast, iss := env.Compile(src)
+	compiled, iss := env.Compile(src)
 	if iss != nil {
 		return fmt.Errorf("failed to parse program: %v", iss)
+	}
+	if simplify {
+		celfmt.Simplify(compiled.NativeRep())
 	}
 	opts := []celfmt.FormatOption{
 		celfmt.Pretty(),
@@ -226,7 +231,7 @@ func celFmt(dst io.Writer, src, indent string) error {
 	if indent != "" {
 		opts = append(opts, celfmt.IndentString(indent))
 	}
-	return celfmt.Format(dst, ast.NativeRep(), common.NewTextSource(src), opts...)
+	return celfmt.Format(dst, compiled.NativeRep(), common.NewTextSource(src), opts...)
 }
 
 func findProgramYAML(s string) (prefix, program, suffix string, err error) {
