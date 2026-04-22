@@ -1,0 +1,20 @@
+celfmt -s -i src.cel
+! stderr .
+cmp stdout want.txt
+
+-- src.cel --
+// comment 0
+has(state.x.f) ?
+  // this comment prevents a re-write since there is not a place to put it
+  state.x.f
+:
+  // comment 1
+  "default"
+-- want.txt --
+// comment 0
+has(state.x.f) ?
+	// this comment prevents a re-write since there is not a place to put it
+	state.x.f
+:
+	// comment 1
+	"default"
