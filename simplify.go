@@ -18,6 +18,9 @@
 package celfmt
 
 import (
+	"strings"
+
+	"github.com/google/cel-go/common"
 	"github.com/google/cel-go/common/ast"
 	"github.com/google/cel-go/common/operators"
 	"github.com/google/cel-go/common/types"
@@ -26,9 +29,11 @@ import (
 // Simplify applies semantics-preserving simplifications to the AST:
 //   - inline single-use .as() bindings
 //   - eliminate boolean comparisons (x == true → x, x == false → !x)
-func Simplify(a *ast.AST) {
+//   - rewrite has(x.f) ? x.f : d and !has(x.f) ? d : x.f → x.?f.orValue(d)
+func Simplify(a *ast.AST, src common.Source) {
 	inlineAs(a)
 	elimBoolCmp(a)
+	elimHasTernary(a, src)
 }
 
 // inlineAs finds .as() macro calls where the bound variable is used at most
@@ -173,4 +178,177 @@ func asBool(e ast.Expr) (bool, bool) {
 		return false, true
 	}
 	return false, false
+}
+
+// elimHasTernary rewrites has(x.f) ? x.f : d → x.?f.orValue(d)
+// and !has(x.f) ? d : x.f → x.?f.orValue(d). The rewrite is skipped
+// when the field-access branch has preceding comments, since the
+// simplified form has no position to attach them.
+func elimHasTernary(a *ast.AST, src common.Source) {
+	info := a.SourceInfo()
+	fac := ast.NewExprFactory()
+	ast.PreOrderVisit(a.Expr(), ast.NewExprVisitor(func(e ast.Expr) {
+		if e.Kind() != ast.CallKind {
+			return
+		}
+		c := e.AsCall()
+		if c.FunctionName() != operators.Conditional {
+			return
+		}
+		args := c.Args()
+		if len(args) != 3 {
+			return
+		}
+
+		hasSel, access, dflt := matchHasTernary(args[0], args[1], args[2])
+		if hasSel == nil {
+			return
+		}
+		if hasComment(src, info, access.ID()) {
+			return
+		}
+
+		sel := hasSel.AsSelect()
+		optSel := fac.NewCall(hasSel.ID(), operators.OptSelect,
+			sel.Operand(), fac.NewLiteral(access.ID(), types.String(sel.FieldName())))
+		orVal := fac.NewMemberCall(e.ID(), "orValue", optSel, dflt)
+
+		e.SetKindCase(orVal)
+		info.ClearMacroCall(hasSel.ID())
+	}))
+}
+
+// hasComment reports whether there are comment lines immediately preceding
+// the expression with the given ID in the source text.
+func hasComment(src common.Source, info *ast.SourceInfo, id int64) bool {
+	start := info.GetStartLocation(id)
+	for line := start.Line() - 1; line > 0; line-- {
+		text, ok := src.Snippet(line)
+		if !ok {
+			return false
+		}
+		trimmed := strings.TrimSpace(text)
+		if trimmed == "" {
+			continue
+		}
+		return strings.HasPrefix(trimmed, "//")
+	}
+	return false
+}
+
+// matchHasTernary checks whether a ternary's condition + branches form a
+// has(x.f) ? x.f : d pattern (or its negated form !has(x.f) ? d : x.f).
+// Returns (has-test select, field-access select, default) on match, or
+// (nil, nil, nil) if the pattern doesn't apply.
+func matchHasTernary(cond, trueBranch, falseBranch ast.Expr) (hasSel, access, dflt ast.Expr) {
+	switch {
+	case isHasTest(cond):
+		// has(x.f) ? x.f : d
+		hasSel = cond
+		access = trueBranch
+		dflt = falseBranch
+	case isNegatedHasTest(cond):
+		// !has(x.f) ? d : x.f
+		hasSel = cond.AsCall().Args()[0]
+		access = falseBranch
+		dflt = trueBranch
+	default:
+		return nil, nil, nil
+	}
+
+	if access.Kind() != ast.SelectKind || access.AsSelect().IsTestOnly() {
+		return nil, nil, nil
+	}
+	h := hasSel.AsSelect()
+	a := access.AsSelect()
+	if h.FieldName() != a.FieldName() {
+		return nil, nil, nil
+	}
+	if !exprEqual(h.Operand(), a.Operand()) {
+		return nil, nil, nil
+	}
+	return hasSel, access, dflt
+}
+
+func isHasTest(e ast.Expr) bool {
+	return e.Kind() == ast.SelectKind && e.AsSelect().IsTestOnly()
+}
+
+func isNegatedHasTest(e ast.Expr) bool {
+	if e.Kind() != ast.CallKind {
+		return false
+	}
+	c := e.AsCall()
+	if c.FunctionName() != operators.LogicalNot {
+		return false
+	}
+	args := c.Args()
+	return len(args) == 1 && isHasTest(args[0])
+}
+
+// exprEqual reports whether two expression trees are structurally identical,
+// ignoring node IDs. Returns false for any kind it cannot compare.
+func exprEqual(a, b ast.Expr) bool {
+	if a.Kind() != b.Kind() {
+		return false
+	}
+	switch a.Kind() {
+	case ast.IdentKind:
+		return a.AsIdent() == b.AsIdent()
+	case ast.SelectKind:
+		sa, sb := a.AsSelect(), b.AsSelect()
+		return sa.FieldName() == sb.FieldName() &&
+			sa.IsTestOnly() == sb.IsTestOnly() &&
+			exprEqual(sa.Operand(), sb.Operand())
+	case ast.LiteralKind:
+		return a.AsLiteral() == b.AsLiteral()
+	case ast.CallKind:
+		ca, cb := a.AsCall(), b.AsCall()
+		if ca.FunctionName() != cb.FunctionName() {
+			return false
+		}
+		if ca.IsMemberFunction() != cb.IsMemberFunction() {
+			return false
+		}
+		if ca.IsMemberFunction() && !exprEqual(ca.Target(), cb.Target()) {
+			return false
+		}
+		aa, ab := ca.Args(), cb.Args()
+		if len(aa) != len(ab) {
+			return false
+		}
+		for i := range aa {
+			if !exprEqual(aa[i], ab[i]) {
+				return false
+			}
+		}
+		return true
+	case ast.ListKind:
+		la, lb := a.AsList(), b.AsList()
+		ea, eb := la.Elements(), lb.Elements()
+		if len(ea) != len(eb) {
+			return false
+		}
+		for i := range ea {
+			if !exprEqual(ea[i], eb[i]) {
+				return false
+			}
+		}
+		return true
+	case ast.MapKind:
+		ma, mb := a.AsMap(), b.AsMap()
+		ea, eb := ma.Entries(), mb.Entries()
+		if len(ea) != len(eb) {
+			return false
+		}
+		for i := range ea {
+			ka, kb := ea[i].AsMapEntry(), eb[i].AsMapEntry()
+			if !exprEqual(ka.Key(), kb.Key()) || !exprEqual(ka.Value(), kb.Value()) {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
 }

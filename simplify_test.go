@@ -33,6 +33,7 @@ func TestSimplify(t *testing.T) {
 		name string
 		in   string
 		want string
+		opts []FormatOption
 	}{
 		// .as() inlining
 		{name: "as_single_use", in: `x.as(v, v + 1)`, want: `x + 1`},
@@ -51,6 +52,20 @@ func TestSimplify(t *testing.T) {
 		// No change when not applicable
 		{name: "eq_non_bool", in: `x == 1`, want: `x == 1`},
 		{name: "neq_unchanged", in: `x != true`, want: `x != true`},
+
+		// has(x.f) ? x.f : d → x.?f.orValue(d)
+		{name: "has_ternary", in: `has(x.f) ? x.f : "default"`, want: `x.?f.orValue("default")`},
+		{name: "has_ternary_deep", in: `has(x.f.g) ? x.f.g : 0`, want: `x.f.?g.orValue(0)`},
+		{name: "has_ternary_negated", in: `!has(x.f) ? "default" : x.f`, want: `x.?f.orValue("default")`},
+		{name: "has_ternary_no_match_op", in: `has(x.f) ? x.f + 1 : 0`, want: `has(x.f) ? (x.f + 1) : 0`},
+		{name: "has_ternary_no_match_field", in: `has(x.f) ? x.g : 0`, want: `has(x.f) ? x.g : 0`},
+		{name: "has_ternary_no_match_operand", in: `has(x.f) ? y.f : 0`, want: `has(x.f) ? y.f : 0`},
+		{
+			name: "has_ternary_comment_on_access",
+			in:   "has(x.f) ?\n\t// keep this\n\tx.f\n:\n\t0",
+			want: "has(x.f) ?\n\t// keep this\n\tx.f\n:\n\t0",
+			opts: []FormatOption{Pretty()},
+		},
 	}
 
 	env := newTestEnv(t)
@@ -61,9 +76,10 @@ func TestSimplify(t *testing.T) {
 				t.Fatalf("Compile(%q): %v", tt.in, iss)
 			}
 			native := compiled.NativeRep()
-			Simplify(native)
+			src := common.NewTextSource(tt.in)
+			Simplify(native, src)
 			var buf strings.Builder
-			err := Format(&buf, native, common.NewTextSource(tt.in))
+			err := Format(&buf, native, src, tt.opts...)
 			if err != nil {
 				t.Fatalf("Format() after Simplify(%q): %v", tt.in, err)
 			}
@@ -80,10 +96,12 @@ func newTestEnv(t *testing.T) *cel.Env {
 	env, err := cel.NewEnv(
 		cel.VariableDecls(
 			decls.NewVariable("x", types.DynType),
+			decls.NewVariable("y", types.DynType),
 			decls.NewVariable("a", types.DynType),
 			decls.NewVariable("b", types.DynType),
 		),
 		lib.Collections(),
+		cel.OptionalTypes(),
 		cel.EnableMacroCallTracking(),
 	)
 	if err != nil {

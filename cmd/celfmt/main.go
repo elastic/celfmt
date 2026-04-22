@@ -221,8 +221,9 @@ func celFmt(dst io.Writer, src, indent string, simplify bool) error {
 	if iss != nil {
 		return fmt.Errorf("failed to parse program: %v", iss)
 	}
+	textSrc := common.NewTextSource(src)
 	if simplify {
-		celfmt.Simplify(compiled.NativeRep())
+		celfmt.Simplify(compiled.NativeRep(), textSrc)
 	}
 	opts := []celfmt.FormatOption{
 		celfmt.Pretty(),
@@ -231,7 +232,7 @@ func celFmt(dst io.Writer, src, indent string, simplify bool) error {
 	if indent != "" {
 		opts = append(opts, celfmt.IndentString(indent))
 	}
-	return celfmt.Format(dst, compiled.NativeRep(), common.NewTextSource(src), opts...)
+	return celfmt.Format(dst, compiled.NativeRep(), textSrc, opts...)
 }
 
 func findProgramYAML(s string) (prefix, program, suffix string, err error) {
