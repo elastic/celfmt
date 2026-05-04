@@ -50,9 +50,15 @@ func main() {
 func Main() int {
 	in := flag.String("i", "", "input file stdin if empty")
 	out := flag.String("o", "", "output file stdout if empty")
-	agent := flag.Bool("agent", false, "format agent config")
+	agent := flag.Bool("agent", false, "format agent config (incompatible with extract)")
+	extract := flag.Bool("extract", false, "extract a formatted CEL program from an agent config (incompatible with agent)")
 	simplify := flag.Bool("s", false, "simplify expressions")
 	flag.Parse()
+
+	if *agent && *extract {
+		flag.Usage()
+		return 1
+	}
 
 	var r io.Reader
 	if *in == "" {
@@ -89,24 +95,32 @@ func Main() int {
 		w = f
 	}
 
-	if !*agent {
+	if *agent || *extract {
+		ast, err := parser.Parse(buf.String())
+		if err != nil {
+			panic(err)
+		}
+		var indent string
+		if *agent {
+			indent = "  "
+		}
+		v := &visitor{indent: indent, simplify: *simplify, extract: *extract}
+		ast.Accept(v)
+		if v.err != nil {
+			log.Fatal(v.err)
+		}
+		if *agent {
+			fmt.Fprint(w, strings.ReplaceAll(buf.String(), v.old, v.new))
+		} else {
+			fmt.Fprint(w, v.new)
+		}
+	} else {
 		err = celFmt(w, buf.String(), "", *simplify)
 		if err != nil {
 			log.Printf("failed to format program: %v", err)
 			return 1
 		}
 		fmt.Fprintln(w)
-	} else {
-		ast, err := parser.Parse(buf.String())
-		if err != nil {
-			panic(err)
-		}
-		v := &visitor{indent: "  ", simplify: *simplify}
-		ast.Accept(v)
-		if v.err != nil {
-			log.Fatal(v.err)
-		}
-		fmt.Fprint(w, strings.ReplaceAll(buf.String(), v.old, v.new))
 	}
 
 	return 0
@@ -117,6 +131,7 @@ type visitor struct {
 	new      string
 	indent   string
 	simplify bool
+	extract  bool
 	err      error
 }
 
@@ -134,7 +149,7 @@ func (v *visitor) VisitContent(s *ast.ContentStatement) any {
 		return nil
 	}
 	if program != "" {
-		program, err = celFmtYAML(program, v.indent, v.simplify)
+		program, err = celFmtYAML(program, v.indent, v.simplify, v.extract)
 		if err != nil {
 			if errors.As(err, &warn{}) {
 				log.Printf("did not format program field content at line %d: %s", s.Line, err)
@@ -143,7 +158,11 @@ func (v *visitor) VisitContent(s *ast.ContentStatement) any {
 			return nil
 		}
 		v.old = s.Value
-		v.new = prefix + program + suffix
+		if v.extract {
+			v.new = program + "\n"
+		} else {
+			v.new = prefix + program + suffix
+		}
 	}
 	return nil
 }
@@ -166,7 +185,7 @@ func (v *visitor) VisitBlock(s *ast.BlockStatement) any {
 	return nil
 }
 
-func celFmtYAML(src, indent string, simplify bool) (string, error) {
+func celFmtYAML(src, indent string, simplify, extract bool) (string, error) {
 	var n yaml.Node
 	err := yaml.Unmarshal([]byte(src), &n)
 	if err != nil {
@@ -180,6 +199,9 @@ func celFmtYAML(src, indent string, simplify bool) (string, error) {
 	err = celFmt(&buf, n.Content[0].Content[1].Value, indent, simplify)
 	if err != nil {
 		return "", warn{err}
+	}
+	if extract {
+		return buf.String(), nil
 	}
 	// We should be able to do this properly, but there is no
 	// non-buggy YAML library that will not double-quote some
