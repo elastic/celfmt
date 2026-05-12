@@ -217,7 +217,10 @@ func celFmt(dst io.Writer, src, indent string, simplify bool) error {
 		return fmt.Errorf("failed to initialize xml helper: %w", err)
 	}
 	env, err := cel.NewEnv(
-		cel.VariableDecls(decls.NewVariable("state", types.DynType)),
+		cel.VariableDecls(
+			decls.NewVariable("state", types.DynType),
+			decls.NewVariable("useragent", types.StringType),
+		),
 		lib.Collections(),
 		lib.Crypto(),
 		lib.JSON(nil),
