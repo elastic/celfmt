@@ -1,11 +1,11 @@
 module github.com/elastic/celfmt
 
-go 1.25.0
+go 1.25.8
 
 toolchain go1.26.4
 
 require (
-	github.com/elastic/mito v1.25.1
+	github.com/elastic/mito v1.27.0
 	github.com/google/cel-go v0.28.0
 	github.com/mailgun/raymond/v2 v2.0.48
 	github.com/rogpeppe/go-internal v1.15.0
