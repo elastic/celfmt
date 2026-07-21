@@ -74,7 +74,7 @@ func inlineAs(a *ast.AST) {
 			}
 
 			if n == 1 {
-				substituteIdent(result, name, init)
+				substituteIdent(result, name, init, info)
 			}
 
 			// Clear the outer .as() macro entry before any remap so we
@@ -89,7 +89,7 @@ func inlineAs(a *ast.AST) {
 			// separate tree).
 			if mcall, ok := info.GetMacroCall(result.ID()); ok {
 				if n == 1 {
-					substituteIdent(mcall, name, init)
+					substituteIdent(mcall, name, init, info)
 				}
 				info.SetMacroCall(comp.ID(), mcall)
 				info.ClearMacroCall(result.ID())
@@ -117,10 +117,17 @@ func countIdent(expr ast.Expr, ident string) int {
 }
 
 // substituteIdent replaces all IdentKind nodes named ident with replacement.
-func substituteIdent(expr ast.Expr, ident string, replacement ast.Expr) {
+// If info is non-nil and replacement has a macro call, the macro call is
+// copied to each substitution site so the formatter can find it by ID.
+func substituteIdent(expr ast.Expr, ident string, replacement ast.Expr, info *ast.SourceInfo) {
 	ast.PreOrderVisit(expr, ast.NewExprVisitor(func(e ast.Expr) {
 		if e.Kind() == ast.IdentKind && e.AsIdent() == ident {
 			e.SetKindCase(replacement)
+			if info != nil {
+				if mcall, ok := info.GetMacroCall(replacement.ID()); ok {
+					info.SetMacroCall(e.ID(), mcall)
+				}
+			}
 		}
 	}))
 }
