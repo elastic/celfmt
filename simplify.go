@@ -30,10 +30,12 @@ import (
 //   - inline single-use .as() bindings
 //   - eliminate boolean comparisons (x == true → x, x == false → !x)
 //   - rewrite has(x.f) ? x.f : d and !has(x.f) ? d : x.f → x.?f.orValue(d)
+//   - fold filter into comprehension: x.filter(v,c).map(v,t) → x.map(v,c,t)
 func Simplify(a *ast.AST, src common.Source) {
 	inlineAs(a)
 	elimBoolCmp(a)
 	elimHasTernary(a, src)
+	foldFilter(a)
 }
 
 // inlineAs finds .as() macro calls where the bound variable is used at most
@@ -116,6 +118,25 @@ func countIdent(expr ast.Expr, ident string) int {
 	return n
 }
 
+// countIdentInMacroTree counts IdentKind nodes named ident, recurring into
+// nested macro call expressions reachable via the SourceInfo macro call map.
+func countIdentInMacroTree(info *ast.SourceInfo, expr ast.Expr, ident string) int {
+	var n int
+	var walk func(ast.Expr)
+	walk = func(e ast.Expr) {
+		ast.PreOrderVisit(e, ast.NewExprVisitor(func(node ast.Expr) {
+			if node.Kind() == ast.IdentKind && node.AsIdent() == ident {
+				n++
+			}
+			if mcall, ok := info.GetMacroCall(node.ID()); ok {
+				walk(mcall)
+			}
+		}))
+	}
+	walk(expr)
+	return n
+}
+
 // substituteIdent replaces all IdentKind nodes named ident with replacement.
 // If info is non-nil and replacement has a macro call, the macro call is
 // copied to each substitution site so the formatter can find it by ID.
@@ -130,6 +151,23 @@ func substituteIdent(expr ast.Expr, ident string, replacement ast.Expr, info *as
 			}
 		}
 	}))
+}
+
+// substituteIdentInMacroTree replaces IdentKind nodes named ident with
+// replacement, recurring into nested macro call expressions.
+func substituteIdentInMacroTree(info *ast.SourceInfo, expr ast.Expr, ident string, replacement ast.Expr) {
+	var walk func(ast.Expr)
+	walk = func(e ast.Expr) {
+		ast.PreOrderVisit(e, ast.NewExprVisitor(func(node ast.Expr) {
+			if node.Kind() == ast.IdentKind && node.AsIdent() == ident {
+				node.SetKindCase(replacement)
+			}
+			if mcall, ok := info.GetMacroCall(node.ID()); ok {
+				walk(mcall)
+			}
+		}))
+	}
+	walk(expr)
 }
 
 // elimBoolCmp rewrites x == true → x and x == false → !x.
@@ -291,6 +329,134 @@ func isNegatedHasTest(e ast.Expr) bool {
 	}
 	args := c.Args()
 	return len(args) == 1 && isHasTest(args[0])
+}
+
+// foldFilter rewrites filter-then-comprehension chains into a single
+// comprehension with a filter argument:
+//
+//	x.filter(v, cond).map(v, t) → x.map(v, cond, t)
+//	x.filter(v, cond).transformList(_, v, t) → x.transformList(_, v, cond, t)
+//	x.filter(v, cond).transformMap(_, v, t) → x.transformMap(_, v, cond, t)
+//	x.filter(v, cond).transformMapEntry(_, v, t) → x.transformMapEntry(_, v, cond, t)
+//
+// For two-variable comprehensions the merge is only applied when the first
+// iteration variable (index/key) is "_", since the filter changes element
+// indices and merging would alter semantics if the index is used.
+func foldFilter(a *ast.AST) {
+	info := a.SourceInfo()
+	fac := ast.NewExprFactory()
+	for {
+		folded := false
+		for id, call := range info.MacroCalls() {
+			if call.Kind() != ast.CallKind {
+				continue
+			}
+			c := call.AsCall()
+			if !c.IsMemberFunction() {
+				continue
+			}
+			fn := c.FunctionName()
+			args := c.Args()
+
+			// Identify comprehensions that accept an optional filter arg
+			// and currently lack one (i.e. they have the minimum arg count).
+			var valIdx int // index of the value iteration variable in args
+			switch fn {
+			case "map":
+				if len(args) != 2 {
+					continue
+				}
+				valIdx = 0
+			case "transformList", "transformMap", "transformMapEntry":
+				if len(args) != 3 {
+					continue
+				}
+				valIdx = 1
+			default:
+				continue
+			}
+
+			// The target of the macro call should reference the filter
+			// comprehension by ID.
+			target := c.Target()
+			filterCall, ok := info.GetMacroCall(target.ID())
+			if !ok || filterCall.Kind() != ast.CallKind {
+				continue
+			}
+			fc := filterCall.AsCall()
+			if fc.FunctionName() != "filter" || !fc.IsMemberFunction() {
+				continue
+			}
+			filterArgs := fc.Args()
+			if len(filterArgs) != 2 {
+				continue
+			}
+			filterVar := filterArgs[0]
+			filterCond := filterArgs[1]
+
+			// The filter's iteration variable must match the consuming
+			// comprehension's value variable, or be safely renameable.
+			iterVar := args[valIdx]
+			if filterVar.Kind() != ast.IdentKind || iterVar.Kind() != ast.IdentKind {
+				continue
+			}
+			needsRename := filterVar.AsIdent() != iterVar.AsIdent()
+			if needsRename && countIdentInMacroTree(info, filterCond, iterVar.AsIdent()) > 0 {
+				continue // target name already in condition — rename would capture
+			}
+
+			// For two-variable comprehensions the first variable (key/index)
+			// must be unused; otherwise the merge changes semantics because
+			// the filter alters element indices.
+			if valIdx == 1 {
+				first := args[0]
+				if first.Kind() != ast.IdentKind || first.AsIdent() != "_" {
+					continue
+				}
+			}
+
+			// Build the merged macro call: target.fn(args..., cond, transform).
+			filterTarget := fc.Target()
+			if needsRename {
+				substituteIdentInMacroTree(info, filterCond, filterVar.AsIdent(), fac.NewIdent(0, iterVar.AsIdent()))
+			}
+			var newArgs []ast.Expr
+			switch fn {
+			case "map":
+				newArgs = []ast.Expr{iterVar, filterCond, args[1]}
+			default:
+				newArgs = []ast.Expr{args[0], iterVar, filterCond, args[2]}
+			}
+			newMCall := fac.NewMemberCall(0, fn, filterTarget, newArgs...)
+			info.SetMacroCall(id, newMCall)
+			info.ClearMacroCall(target.ID())
+
+			// Update the AST: skip the filter comprehension so the
+			// consuming comprehension iterates directly over the
+			// filter's source.
+			ast.PreOrderVisit(a.Expr(), ast.NewExprVisitor(func(e ast.Expr) {
+				if e.ID() != id || e.Kind() != ast.ComprehensionKind {
+					return
+				}
+				iterRange := e.AsComprehension().IterRange()
+				if iterRange.Kind() != ast.ComprehensionKind {
+					return
+				}
+				filterSource := iterRange.AsComprehension().IterRange()
+				if mcall, ok := info.GetMacroCall(filterSource.ID()); ok {
+					info.SetMacroCall(iterRange.ID(), mcall)
+					info.ClearMacroCall(filterSource.ID())
+				}
+				iterRange.SetKindCase(filterSource)
+			}))
+
+			folded = true
+			break
+		}
+		if !folded {
+			return
+		}
+	}
 }
 
 // exprEqual reports whether two expression trees are structurally identical,

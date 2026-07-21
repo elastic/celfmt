@@ -26,6 +26,7 @@ import (
 	"github.com/google/cel-go/common"
 	"github.com/google/cel-go/common/decls"
 	"github.com/google/cel-go/common/types"
+	"github.com/google/cel-go/ext"
 )
 
 func TestSimplify(t *testing.T) {
@@ -66,6 +67,16 @@ func TestSimplify(t *testing.T) {
 			want: "has(x.f) ?\n\t// keep this\n\tx.f\n:\n\t0",
 			opts: []FormatOption{Pretty()},
 		},
+
+		// fold filter into comprehension
+		{name: "filter_map", in: `x.filter(v, v > 0).map(v, v * 2)`, want: `x.map(v, v > 0, v * 2)`},
+		{name: "filter_map_rename", in: `x.filter(e, e > 0).map(f, f * 2)`, want: `x.map(f, f > 0, f * 2)`},
+		{name: "filter_map_rename_capture", in: `x.filter(e, y.exists(f, f == e)).map(f, f * 2)`, want: `x.filter(e, y.exists(f, f == e)).map(f, f * 2)`},
+		{name: "filter_map_already_filtered", in: `x.map(v, v > 0, v * 2)`, want: `x.map(v, v > 0, v * 2)`},
+		{name: "filter_transformList", in: `x.filter(v, v > 0).transformList(_, v, v * 2)`, want: `x.transformList(_, v, v > 0, v * 2)`},
+		{name: "filter_transformMap", in: `x.filter(v, v > 0).transformMap(_, v, v * 2)`, want: `x.transformMap(_, v, v > 0, v * 2)`},
+		{name: "filter_transformMapEntry", in: `x.filter(v, v > 0).transformMapEntry(_, v, {v: v})`, want: `x.transformMapEntry(_, v, v > 0, {v: v})`},
+		{name: "filter_transformList_used_idx", in: `x.filter(v, v > 0).transformList(i, v, i)`, want: `x.filter(v, v > 0).transformList(i, v, i)`},
 	}
 
 	env := newTestEnv(t)
@@ -101,7 +112,8 @@ func newTestEnv(t *testing.T) *cel.Env {
 			decls.NewVariable("b", types.DynType),
 		),
 		lib.Collections(),
-		cel.OptionalTypes(),
+		cel.OptionalTypes(cel.OptionalTypesVersion(lib.OptionalTypesVersion)),
+		ext.TwoVarComprehensions(ext.TwoVarComprehensionsVersion(lib.OptionalTypesVersion)),
 		cel.EnableMacroCallTracking(),
 	)
 	if err != nil {
