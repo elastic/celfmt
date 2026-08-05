@@ -331,17 +331,16 @@ func isNegatedHasTest(e ast.Expr) bool {
 	return len(args) == 1 && isHasTest(args[0])
 }
 
-// foldFilter rewrites filter-then-comprehension chains into a single
-// comprehension with a filter argument:
+// foldFilter rewrites filter-then-map chains into a single map with a filter
+// argument:
 //
 //	x.filter(v, cond).map(v, t) → x.map(v, cond, t)
-//	x.filter(v, cond).transformList(_, v, t) → x.transformList(_, v, cond, t)
-//	x.filter(v, cond).transformMap(_, v, t) → x.transformMap(_, v, cond, t)
-//	x.filter(v, cond).transformMapEntry(_, v, t) → x.transformMapEntry(_, v, cond, t)
 //
-// For two-variable comprehensions the merge is only applied when the first
-// iteration variable (index/key) is "_", since the filter changes element
-// indices and merging would alter semantics if the index is used.
+// The transform* comprehensions are not folded because filter on a map
+// iterates keys while two-variable transform* binds (key, value), so folding
+// would rebind the variable from filtered keys to values, changing semantics.
+// Since celfmt compiles with state as dyn, there is no type information to
+// distinguish list from map sources.
 func foldFilter(a *ast.AST) {
 	info := a.SourceInfo()
 	fac := ast.NewExprFactory()
@@ -358,21 +357,8 @@ func foldFilter(a *ast.AST) {
 			fn := c.FunctionName()
 			args := c.Args()
 
-			// Identify comprehensions that accept an optional filter arg
-			// and currently lack one (i.e. they have the minimum arg count).
-			var valIdx int // index of the value iteration variable in args
-			switch fn {
-			case "map":
-				if len(args) != 2 {
-					continue
-				}
-				valIdx = 0
-			case "transformList", "transformMap", "transformMapEntry":
-				if len(args) != 3 {
-					continue
-				}
-				valIdx = 1
-			default:
+			// Only fold filter into map (2-arg form without existing filter).
+			if fn != "map" || len(args) != 2 {
 				continue
 			}
 
@@ -394,9 +380,9 @@ func foldFilter(a *ast.AST) {
 			filterVar := filterArgs[0]
 			filterCond := filterArgs[1]
 
-			// The filter's iteration variable must match the consuming
-			// comprehension's value variable, or be safely renameable.
-			iterVar := args[valIdx]
+			// The filter's iteration variable must match the map's
+			// value variable, or be safely renameable.
+			iterVar := args[0]
 			if filterVar.Kind() != ast.IdentKind || iterVar.Kind() != ast.IdentKind {
 				continue
 			}
@@ -405,35 +391,21 @@ func foldFilter(a *ast.AST) {
 				continue // target name already in condition — rename would capture
 			}
 
-			// For two-variable comprehensions the first variable (key/index)
-			// must be unused; otherwise the merge changes semantics because
-			// the filter alters element indices.
-			if valIdx == 1 {
-				first := args[0]
-				if first.Kind() != ast.IdentKind || first.AsIdent() != "_" {
-					continue
-				}
-			}
-
-			// Build the merged macro call: target.fn(args..., cond, transform).
+			// Build the merged macro call: target.map(v, cond, transform).
 			filterTarget := fc.Target()
 			if needsRename {
 				substituteIdentInMacroTree(info, filterCond, filterVar.AsIdent(), fac.NewIdent(0, iterVar.AsIdent()))
 			}
-			var newArgs []ast.Expr
-			switch fn {
-			case "map":
-				newArgs = []ast.Expr{iterVar, filterCond, args[1]}
-			default:
-				newArgs = []ast.Expr{args[0], iterVar, filterCond, args[2]}
-			}
+			newArgs := []ast.Expr{iterVar, filterCond, args[1]}
 			newMCall := fac.NewMemberCall(0, fn, filterTarget, newArgs...)
 			info.SetMacroCall(id, newMCall)
 			info.ClearMacroCall(target.ID())
 
 			// Update the AST: skip the filter comprehension so the
 			// consuming comprehension iterates directly over the
-			// filter's source.
+			// filter's source. The macro call for the source (if any)
+			// stays at its original ID — the new macro tree references
+			// it there via an unspecified-expr placeholder.
 			ast.PreOrderVisit(a.Expr(), ast.NewExprVisitor(func(e ast.Expr) {
 				if e.ID() != id || e.Kind() != ast.ComprehensionKind {
 					return
@@ -443,10 +415,6 @@ func foldFilter(a *ast.AST) {
 					return
 				}
 				filterSource := iterRange.AsComprehension().IterRange()
-				if mcall, ok := info.GetMacroCall(filterSource.ID()); ok {
-					info.SetMacroCall(iterRange.ID(), mcall)
-					info.ClearMacroCall(filterSource.ID())
-				}
 				iterRange.SetKindCase(filterSource)
 			}))
 
