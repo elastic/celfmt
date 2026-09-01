@@ -80,19 +80,11 @@ func Main() int {
 	}
 
 	var w io.Writer
+	var outBuf bytes.Buffer
 	if *out == "" {
 		w = os.Stdout
 	} else {
-		f, err := os.Create(*out)
-		if err != nil {
-			log.Printf("could not open output file: %v", err)
-			return 1
-		}
-		defer func() {
-			f.Sync()
-			f.Close()
-		}()
-		w = f
+		w = &outBuf
 	}
 
 	if *agent || *extract {
@@ -107,7 +99,8 @@ func Main() int {
 		v := &visitor{indent: indent, simplify: *simplify, extract: *extract}
 		ast.Accept(v)
 		if v.err != nil {
-			log.Fatal(v.err)
+			log.Printf("%v", v.err)
+			return 1
 		}
 		if *agent {
 			fmt.Fprint(w, strings.ReplaceAll(buf.String(), v.old, v.new))
@@ -121,6 +114,22 @@ func Main() int {
 			return 1
 		}
 		fmt.Fprintln(w)
+	}
+
+	if *out != "" {
+		f, err := os.Create(*out)
+		if err != nil {
+			log.Printf("could not open output file: %v", err)
+			return 1
+		}
+		defer func() {
+			f.Sync()
+			f.Close()
+		}()
+		if _, err = io.Copy(f, &outBuf); err != nil {
+			log.Printf("could not write output: %v", err)
+			return 1
+		}
 	}
 
 	return 0
