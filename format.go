@@ -88,6 +88,11 @@ type formatter struct {
 	comments map[location]int64
 
 	err error
+
+	// operatorWrapped is set by writeOperatorWithWrapping when it inserts a
+	// line break. It is used by inlineWouldWrap to detect operator-induced
+	// wrapping without false positives from other WriteNewLine calls.
+	operatorWrapped bool
 }
 
 type lenWriter struct {
@@ -843,6 +848,21 @@ func (un *formatter) visitMaybeNested(expr ast.Expr, nested bool) error {
 	// associated with descendant expressions.
 	multiline := un.isMultiline(expr) || (nested && un.hasCommentsInTree(expr))
 
+	if !multiline && nested {
+		// Speculatively write the expression with a leading paren to detect
+		// whether any operator would wrap to a new line. Wrapping in the inline
+		// path produces a multi-line form inconsistent with the structured
+		// multiline path below, which causes the formatter to oscillate between
+		// two representations on successive runs.
+		if un.inlineWouldWrap(expr) {
+			multiline = true
+			// Propagate to any enclosing speculative write so that inlineWouldWrap
+			// for an outer expression can detect wrapping that was caught and
+			// rerouted by a nested visitMaybeNested call.
+			un.operatorWrapped = true
+		}
+	}
+
 	if multiline {
 		if nested {
 			un.indent++
@@ -872,6 +892,42 @@ func (un *formatter) visitMaybeNested(expr ast.Expr, nested bool) error {
 	}
 
 	return nil
+}
+
+// inlineWouldWrap reports whether visiting expr with a leading open-paren at
+// the current write position would cause any operator to wrap to a new line.
+// Operator wrapping in the inline path produces a multi-line form that is
+// inconsistent with the structured multiline format, causing oscillation.
+func (un *formatter) inlineWouldWrap(expr ast.Expr) bool {
+	origW := un.dst.w
+	savedLen := un.dst.len
+	savedPrefix := make([]byte, un.dst.prefix.Len())
+	copy(savedPrefix, un.dst.prefix.Bytes())
+	savedLastWrapped := un.lastWrappedIndex
+	savedOperatorWrapped := un.operatorWrapped
+	savedErr := un.err
+
+	var discard strings.Builder
+	un.dst.w = &discard
+	un.operatorWrapped = false
+
+	// Include the opening paren so writeOperatorWithWrapping sees the
+	// correct current position when checking against the column limit.
+	un.WriteString("(")
+	_ = un.visit(expr, false)
+
+	// Wrapping is indicated by writeOperatorWithWrapping setting operatorWrapped.
+	wrapped := un.operatorWrapped
+
+	un.dst.w = origW
+	un.dst.len = savedLen
+	un.dst.prefix.Reset()
+	un.dst.prefix.Write(savedPrefix)
+	un.lastWrappedIndex = savedLastWrapped
+	un.operatorWrapped = savedOperatorWrapped
+	un.err = savedErr
+
+	return wrapped
 }
 
 func (un *formatter) isMultiline(expr ast.Expr) bool {
@@ -1078,6 +1134,7 @@ func (un *formatter) writeOperatorWithWrapping(fun, unmangled string) bool {
 
 	if wrapOperatorExists && lineLength >= un.options.wrapOnColumn {
 		un.lastWrappedIndex = un.dst.Len()
+		un.operatorWrapped = true
 		// wrapAfterColumnLimit flag dictates whether the newline is placed
 		// before or after the operator
 		if un.options.wrapAfterColumnLimit {
