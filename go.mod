@@ -2,7 +2,7 @@ module github.com/elastic/celfmt
 
 go 1.25.8
 
-toolchain go1.26.4
+toolchain go1.27.1
 
 require (
 	github.com/elastic/mito v1.27.0
