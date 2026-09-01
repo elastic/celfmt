@@ -1,0 +1,21 @@
+celfmt -agent -i src.cel -o out1.cel
+! stderr .
+
+# Run celfmt again on the output to verify idempotency
+celfmt -agent -i out1.cel -o out2.cel
+! stderr .
+
+# The two outputs should be identical
+cmp out1.cel out2.cel
+
+-- src.cel --
+program: |-
+  state.with(
+    {
+      "x": state.with(
+        {
+          "start_time": has(state.cursor) && has(state.cursor.last_timestamp) && state.cursor.last_timestamp != null ? state.cursor.last_timestamp : state.end_time,
+        }
+      ),
+    }
+  )
