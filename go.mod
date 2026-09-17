@@ -1,12 +1,10 @@
 module github.com/elastic/celfmt
 
-go 1.25.8
-
-toolchain go1.26.4
+go 1.26.8
 
 require (
-	github.com/elastic/mito v1.27.0
-	github.com/google/cel-go v0.28.0
+	cel.dev/cel-go v0.32.0
+	github.com/elastic/mito v1.28.0
 	github.com/mailgun/raymond/v2 v2.0.48
 	github.com/rogpeppe/go-internal v1.16.0
 	google.golang.org/protobuf v1.36.12
@@ -33,6 +31,7 @@ require (
 	github.com/golang/protobuf v1.5.3 // indirect
 	github.com/google/uuid v1.3.0 // indirect
 	github.com/kr/pretty v0.1.0 // indirect
+	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	golang.org/x/exp v0.0.0-20240823005443-9b4947da3948 // indirect
 	golang.org/x/net v0.38.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect

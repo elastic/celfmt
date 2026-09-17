@@ -44,12 +44,13 @@ import (
 	"strings"
 	"syscall/js"
 
+	"cel.dev/cel-go/cel"
+	"cel.dev/cel-go/common"
+	"cel.dev/cel-go/common/decls"
+	"cel.dev/cel-go/common/types"
+	"cel.dev/cel-go/ext"
+
 	"github.com/elastic/mito/lib"
-	"github.com/google/cel-go/cel"
-	"github.com/google/cel-go/common"
-	"github.com/google/cel-go/common/decls"
-	"github.com/google/cel-go/common/types"
-	"github.com/google/cel-go/ext"
 
 	"github.com/elastic/celfmt"
 )
@@ -143,7 +144,7 @@ func toObject(v any) map[string]any {
 //   - go: The Go language version used to build the program (without the "go" prefix).
 //   - celfmt: The version of the main module in the build information.
 //   - mito: The version of the "github.com/elastic/mito" module.
-//   - cel-go: The version of the "github.com/google/cel-go" module.
+//   - cel-go: The version of the "cel.dev/cel-go" module.
 //   - commit: The VCS revision (commit hash) from the build settings, if available.
 //   - commit_time: The timestamp of the VCS revision from the build settings, if available.
 func moduleBuildMetadata(_ js.Value, _ []js.Value) any {
@@ -161,7 +162,7 @@ func moduleBuildMetadata(_ js.Value, _ []js.Value) any {
 		switch m.Path {
 		case "github.com/elastic/mito":
 			meta["mito"] = m.Version
-		case "github.com/google/cel-go":
+		case "cel.dev/cel-go":
 			meta["cel-go"] = m.Version
 		}
 	}
