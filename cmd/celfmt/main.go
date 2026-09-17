@@ -28,15 +28,16 @@ import (
 	"os"
 	"strings"
 
-	"github.com/elastic/mito/lib"
-	"github.com/google/cel-go/cel"
-	"github.com/google/cel-go/common"
-	"github.com/google/cel-go/common/decls"
-	"github.com/google/cel-go/common/types"
-	"github.com/google/cel-go/ext"
+	"cel.dev/cel-go/cel"
+	"cel.dev/cel-go/common"
+	"cel.dev/cel-go/common/decls"
+	"cel.dev/cel-go/common/types"
+	"cel.dev/cel-go/ext"
 	"github.com/mailgun/raymond/v2/ast"
 	"github.com/mailgun/raymond/v2/parser"
 	"gopkg.in/yaml.v3"
+
+	"github.com/elastic/mito/lib"
 
 	"github.com/elastic/celfmt"
 )

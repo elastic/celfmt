@@ -3,8 +3,8 @@ module github.com/elastic/celfmt
 go 1.26.8
 
 require (
+	cel.dev/cel-go v0.32.0
 	github.com/elastic/mito v1.28.0
-	github.com/google/cel-go v0.28.0
 	github.com/mailgun/raymond/v2 v2.0.48
 	github.com/rogpeppe/go-internal v1.16.0
 	google.golang.org/protobuf v1.36.12
@@ -13,7 +13,6 @@ require (
 
 require (
 	aqwari.net/xml v0.0.0-20210331023308-d9421b293817 // indirect
-	cel.dev/cel-go v0.32.0 // indirect
 	cel.dev/expr v0.25.1 // indirect
 	github.com/antlr4-go/antlr/v4 v4.13.1 // indirect
 	github.com/aws/aws-sdk-go-v2 v1.36.5 // indirect
