@@ -248,6 +248,9 @@ func celFmt(dst io.Writer, src, indent string, simplify bool) error {
 		cel.OptionalTypes(cel.OptionalTypesVersion(lib.OptionalTypesVersion)),
 		ext.TwoVarComprehensions(ext.TwoVarComprehensionsVersion(lib.OptionalTypesVersion)),
 		cel.EnableMacroCallTracking(),
+		// Formatting adds whitespace, so already-formatted programs
+		// can exceed the default limit even if the original did not.
+		cel.ParserExpressionSizeLimit(-1),
 	)
 	if err != nil {
 		return fmt.Errorf("failed to create env: %w", err)

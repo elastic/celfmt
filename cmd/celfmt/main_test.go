@@ -19,7 +19,9 @@ package main
 
 import (
 	"flag"
+	"io"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/rogpeppe/go-internal/testscript"
@@ -41,4 +43,13 @@ func TestScripts(t *testing.T) {
 		UpdateScripts: *update,
 	}
 	testscript.Run(t, p)
+}
+
+func TestLargeProgram(t *testing.T) {
+	// More than the default parser limit of 100000 code points.
+	src := "[" + strings.Repeat("1, ", 40000) + "1]"
+	err := celFmt(io.Discard, src, "", false)
+	if err != nil {
+		t.Errorf("celFmt failed for %d code point program: %v", len(src), err)
+	}
 }
