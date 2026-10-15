@@ -78,6 +78,10 @@ func inlineAs(a *ast.AST) {
 			if n == 1 {
 				substituteIdent(result, name, init, info)
 			}
+			// The init expression is no longer in the tree, so drop its
+			// macro call entry. substituteIdent has already copied it to
+			// the use site if there was one.
+			info.ClearMacroCall(init.ID())
 
 			// Clear the outer .as() macro entry before any remap so we
 			// don't clobber a remapped inner entry that lands on the
@@ -98,12 +102,28 @@ func inlineAs(a *ast.AST) {
 			}
 
 			comp.SetKindCase(result)
+			replaceMacroPlaceholders(info, id, comp)
 			inlined = true
 			break
 		}
 		if !inlined {
 			return
 		}
+	}
+}
+
+// replaceMacroPlaceholders replaces the placeholder nodes with the given ID
+// in all macro call expressions with the content of repl. A macro call that
+// takes another macro call as an argument refers to it by placeholder, so
+// when that inner macro call is removed the placeholder would otherwise be
+// left with nothing to resolve to.
+func replaceMacroPlaceholders(info *ast.SourceInfo, id int64, repl ast.Expr) {
+	for _, call := range info.MacroCalls() {
+		ast.PreOrderVisit(call, ast.NewExprVisitor(func(e ast.Expr) {
+			if e.ID() == id && e.Kind() == ast.UnspecifiedExprKind {
+				e.SetKindCase(repl)
+			}
+		}))
 	}
 }
 
@@ -228,10 +248,16 @@ func asBool(e ast.Expr) (bool, bool) {
 // elimHasTernary rewrites has(x.f) ? x.f : d → x.?f.orValue(d)
 // and !has(x.f) ? d : x.f → x.?f.orValue(d). The rewrite is skipped
 // when the field-access branch has preceding comments, since the
-// simplified form has no position to attach them.
+// simplified form has no position to attach them. It is also skipped when
+// the has() test appears in any macro call expression, such as the body of
+// a map, filter or as call. The formatter prints the macro call's own copy
+// of the ternary, which still needs the has() macro call, so rewriting the
+// tree would only break it. Ternaries inside macro bodies are therefore
+// not simplified.
 func elimHasTernary(a *ast.AST, src common.Source) {
 	info := a.SourceInfo()
 	fac := ast.NewExprFactory()
+	inMacro := macroNodeIDs(info)
 	ast.PreOrderVisit(a.Expr(), ast.NewExprVisitor(func(e ast.Expr) {
 		if e.Kind() != ast.CallKind {
 			return
@@ -249,7 +275,7 @@ func elimHasTernary(a *ast.AST, src common.Source) {
 		if hasSel == nil {
 			return
 		}
-		if hasComment(src, info, access.ID()) {
+		if hasComment(src, info, access.ID()) || inMacro[hasSel.ID()] {
 			return
 		}
 
@@ -261,6 +287,18 @@ func elimHasTernary(a *ast.AST, src common.Source) {
 		e.SetKindCase(orVal)
 		info.ClearMacroCall(hasSel.ID())
 	}))
+}
+
+// macroNodeIDs returns the set of node IDs that appear within macro call
+// expressions.
+func macroNodeIDs(info *ast.SourceInfo) map[int64]bool {
+	ids := make(map[int64]bool)
+	for _, call := range info.MacroCalls() {
+		ast.PreOrderVisit(call, ast.NewExprVisitor(func(e ast.Expr) {
+			ids[e.ID()] = true
+		}))
+	}
+	return ids
 }
 
 // hasComment reports whether there are comment lines immediately preceding
