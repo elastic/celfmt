@@ -26,6 +26,7 @@ import (
 	"io"
 	"log"
 	"os"
+	"regexp"
 	"strings"
 
 	"cel.dev/cel-go/cel"
@@ -89,7 +90,9 @@ func Main() int {
 	}
 
 	if *agent || *extract {
-		ast, err := parser.Parse(buf.String())
+		// Templates are written out with Unix line endings.
+		src := strings.ReplaceAll(buf.String(), "\r\n", "\n")
+		ast, err := parser.Parse(src)
 		if err != nil {
 			panic(err)
 		}
@@ -104,7 +107,7 @@ func Main() int {
 			return 1
 		}
 		if *agent {
-			fmt.Fprint(w, strings.ReplaceAll(buf.String(), v.old, v.new))
+			fmt.Fprint(w, strings.ReplaceAll(src, v.old, v.new))
 		} else {
 			fmt.Fprint(w, v.new)
 		}
@@ -143,6 +146,11 @@ type visitor struct {
 	simplify bool
 	extract  bool
 	err      error
+
+	// seen is the text of all content nodes visited so far. It lets
+	// findProgram look back past handlebars blocks to find the
+	// parent key of an indented program field.
+	seen strings.Builder
 }
 
 func (v *visitor) VisitProgram(node *ast.Program) any {
@@ -153,28 +161,104 @@ func (v *visitor) VisitProgram(node *ast.Program) any {
 }
 
 func (v *visitor) VisitContent(s *ast.ContentStatement) any {
-	prefix, program, suffix, err := findProgramYAML(s.Value)
+	defer v.seen.WriteString(s.Value)
+
+	blk, ok := findProgram(v.seen.String(), s.Value)
+	if !ok {
+		return nil
+	}
+	program, err := celFmtYAML(blk, v.indent, v.simplify, v.extract)
 	if err != nil {
+		if errors.As(err, &warn{}) {
+			log.Printf("did not format program field content at line %d: %s", s.Line, err)
+		}
 		v.err = err
 		return nil
 	}
-	if program != "" {
-		program, err = celFmtYAML(program, v.indent, v.simplify, v.extract)
-		if err != nil {
-			if errors.As(err, &warn{}) {
-				log.Printf("did not format program field content at line %d: %s", s.Line, err)
-			}
-			v.err = err
-			return nil
-		}
-		v.old = s.Value
-		if v.extract {
-			v.new = program + "\n"
-		} else {
-			v.new = prefix + program + suffix
-		}
+	v.old = s.Value
+	if v.extract {
+		v.new = program + "\n"
+	} else {
+		v.new = blk.prefix + program + blk.suffix
 	}
 	return nil
+}
+
+// programBlock is a block scalar program field found in a content node.
+type programBlock struct {
+	prefix string // Text before the field.
+	body   string // The field, from its key to the end of its block scalar.
+	suffix string // Text after the field.
+
+	key string // Field key: "program" or "cel.program".
+	col int    // Column of the key.
+}
+
+// programKey matches the start of a block scalar program field.
+var programKey = regexp.MustCompile(`(?m)^( *)(cel\.program|program):[ \t]+[|>][-+0-9]*([ \t]+#.*)?[ \t]*$`)
+
+// findProgram looks for a program field in s, the text of a content
+// node. The field is either a top level program (CEL input) or cel.program
+// (httpjson input with run_as_cel), or an indented program that is a child
+// of a top level cel key. before is the text that precedes s in the
+// template, used to find the parent of an indented field.
+func findProgram(before, s string) (programBlock, bool) {
+	for _, m := range programKey.FindAllStringSubmatchIndex(s, -1) {
+		start := m[0]
+		col := m[3] - m[2]
+		key := s[m[4]:m[5]]
+		if col != 0 && (key != "program" || !underCEL(before+s[:start], col)) {
+			continue
+		}
+		end := blockEnd(s, m[1], col)
+		return programBlock{prefix: s[:start], body: s[start:end], suffix: s[end:], key: key, col: col}, true
+	}
+	return programBlock{}, false
+}
+
+// blockEnd returns the offset in s of the end of the block scalar whose key
+// line ends at from and is at column col. Trailing blank lines are part of
+// the block, so they are not preserved when the program is rewritten.
+func blockEnd(s string, from, col int) int {
+	pos := from
+	if pos < len(s) {
+		pos++ // Skip the newline ending the key line.
+	}
+	for pos < len(s) {
+		next := len(s)
+		if i := strings.IndexByte(s[pos:], '\n'); i >= 0 {
+			next = pos + i + 1
+		}
+		line := s[pos:next]
+		if strings.TrimSpace(line) != "" && leadingSpaces(line) <= col {
+			break
+		}
+		pos = next
+	}
+	return pos
+}
+
+// underCEL returns whether the nearest preceding line in text that is
+// indented less than col is the top level key "cel". Blank and comment
+// lines are ignored. Handlebars statements that stand alone on a line have
+// already been removed from text by the template parser.
+func underCEL(text string, col int) bool {
+	lines := strings.Split(text, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		l := lines[i]
+		t := strings.TrimSpace(l)
+		if t == "" || strings.HasPrefix(t, "#") || leadingSpaces(l) >= col {
+			continue
+		}
+		key, rest, _ := strings.Cut(t, ":")
+		rest = strings.TrimSpace(rest)
+		return leadingSpaces(l) == 0 && key == "cel" && (rest == "" || strings.HasPrefix(rest, "#"))
+	}
+	return false
+}
+
+func leadingSpaces(s string) int {
+	return len(s) - len(strings.TrimLeft(s, " "))
 }
 
 func (v *visitor) VisitBlock(s *ast.BlockStatement) any {
@@ -195,13 +279,13 @@ func (v *visitor) VisitBlock(s *ast.BlockStatement) any {
 	return nil
 }
 
-func celFmtYAML(src, indent string, simplify, extract bool) (string, error) {
+func celFmtYAML(blk programBlock, indent string, simplify, extract bool) (string, error) {
 	var n yaml.Node
-	err := yaml.Unmarshal([]byte(src), &n)
+	err := yaml.Unmarshal([]byte(blk.body), &n)
 	if err != nil {
 		return "", err
 	}
-	if len(n.Content) != 1 && len(n.Content[0].Content) != 2 {
+	if len(n.Content) != 1 || n.Content[0].Kind != yaml.MappingNode || len(n.Content[0].Content) != 2 {
 		return "", fmt.Errorf("unexpected shape")
 	}
 
@@ -216,7 +300,8 @@ func celFmtYAML(src, indent string, simplify, extract bool) (string, error) {
 	// We should be able to do this properly, but there is no
 	// non-buggy YAML library that will not double-quote some
 	// programs.
-	return "program: |-\n  " + strings.ReplaceAll(buf.String(), "\n", "\n  ") + "\n", nil
+	pad := strings.Repeat(" ", blk.col)
+	return pad + blk.key + ": |-\n" + pad + "  " + strings.ReplaceAll(buf.String(), "\n", "\n"+pad+"  ") + "\n", nil
 }
 
 type warn struct{ error }
@@ -271,60 +356,6 @@ func celFmt(dst io.Writer, src, indent string, simplify bool) error {
 		opts = append(opts, celfmt.IndentString(indent))
 	}
 	return celfmt.Format(dst, compiled.NativeRep(), textSrc, opts...)
-}
-
-func findProgramYAML(s string) (prefix, program, suffix string, err error) {
-	var yn yaml.Node
-	idx := strings.Index(s, "\nprogram: |")
-	if idx < 0 {
-		if !strings.HasPrefix(s, "program: |") {
-			return prefix, program, suffix, err
-		}
-		// idx is -1 so the inc that follows
-		// brings us to the start of the string.
-	}
-	idx++
-	prefix = s[:idx]
-	program = s[idx:]
-	err = yaml.Unmarshal([]byte(program), &yn)
-	if err != nil {
-		return "", "", "", err
-	}
-	next := findNext(&yn, "program")
-	if next == nil {
-		return prefix, program, "", nil
-	}
-	suffix = s[idx:]
-	for l := 1; l < next.Line; l++ {
-		var ok bool
-		_, suffix, ok = strings.Cut(suffix, "\n")
-		if !ok {
-			break
-		}
-	}
-	program = strings.TrimSuffix(program, suffix)
-	return prefix, program, suffix, nil
-}
-
-func findNext(node *yaml.Node, tag string) *yaml.Node {
-	var keyOK, valOK bool
-	for _, n := range node.Content {
-		c := findNext(n, tag)
-		if c != nil {
-			return c
-		}
-		if valOK {
-			return n
-		}
-		if keyOK {
-			valOK = true
-			continue
-		}
-		if n.Value == tag {
-			keyOK = true
-		}
-	}
-	return nil
 }
 
 // ¯\_(ツ)_/¯

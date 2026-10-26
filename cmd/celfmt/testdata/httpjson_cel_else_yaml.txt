@@ -1,0 +1,24 @@
+celfmt -agent -i src.cel
+! stderr .
+cmp stdout want.txt
+
+-- src.cel --
+cel:
+  state:
+    a: 1
+{{#if max_executions}}
+  max_executions: {{max_executions}}
+{{else}}
+  program: |
+    state.with({"events":[],"want_more":false})
+{{/if}}
+-- want.txt --
+cel:
+  state:
+    a: 1
+{{#if max_executions}}
+  max_executions: {{max_executions}}
+{{else}}
+  program: |-
+    state.with({"events": [], "want_more": false})
+{{/if}}

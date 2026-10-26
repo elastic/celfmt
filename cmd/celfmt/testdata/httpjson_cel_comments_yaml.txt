@@ -1,0 +1,12 @@
+celfmt -agent -i src.cel
+! stderr .
+cmp stdout want.txt
+
+-- src.cel --
+cel: # The CEL config.
+  program: |- # The program.
+    state.with({"events":[],"want_more":false})
+-- want.txt --
+cel: # The CEL config.
+  program: |-
+    state.with({"events": [], "want_more": false})

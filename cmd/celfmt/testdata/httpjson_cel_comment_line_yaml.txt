@@ -1,0 +1,18 @@
+celfmt -agent -i src.cel
+! stderr .
+cmp stdout want.txt
+
+-- src.cel --
+cel:
+  state:
+    a: 1
+# A comment at column 0.
+  program: |
+    state.with({"events":[],"want_more":false})
+-- want.txt --
+cel:
+  state:
+    a: 1
+# A comment at column 0.
+  program: |-
+    state.with({"events": [], "want_more": false})

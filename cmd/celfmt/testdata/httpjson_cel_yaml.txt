@@ -1,0 +1,52 @@
+celfmt -agent -i src.cel
+! stderr .
+cmp stdout want.txt
+
+celfmt -extract -i src.cel
+! stderr .
+cmp stdout want_extract.txt
+
+-- src.cel --
+interval: {{interval}}
+run_as_cel: true
+request.url: {{url}}
+{{#if ssl}}
+request.ssl: {{ssl}}
+{{/if}}
+cel.max_executions: {{max_executions}}
+cel.state:
+  api_token: {{api_token}}
+cel.redact:
+  fields:
+    - api_token
+cel.program: |-
+  state.with({"Header":{"Accept":["application/json"]}}.as(h, get_request(state.url).with(h).do_request().as(resp, {"events":[{"message":resp.Body.decode_json().encode_json()}],"want_more":false})))
+tags:
+  - run_as_cel
+{{#if processors}}
+processors:
+{{processors}}
+{{/if}}
+-- want.txt --
+interval: {{interval}}
+run_as_cel: true
+request.url: {{url}}
+{{#if ssl}}
+request.ssl: {{ssl}}
+{{/if}}
+cel.max_executions: {{max_executions}}
+cel.state:
+  api_token: {{api_token}}
+cel.redact:
+  fields:
+    - api_token
+cel.program: |-
+  state.with({"Header": {"Accept": ["application/json"]}}.as(h, get_request(state.url).with(h).do_request().as(resp, {"events": [{"message": resp.Body.decode_json().encode_json()}], "want_more": false})))
+tags:
+  - run_as_cel
+{{#if processors}}
+processors:
+{{processors}}
+{{/if}}
+-- want_extract.txt --
+state.with({"Header": {"Accept": ["application/json"]}}.as(h, get_request(state.url).with(h).do_request().as(resp, {"events": [{"message": resp.Body.decode_json().encode_json()}], "want_more": false})))
