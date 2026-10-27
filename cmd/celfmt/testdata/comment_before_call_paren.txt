@@ -1,5 +1,5 @@
 # A comment above a function name whose opening parenthesis is on the next
-# line is kept.
+# line is kept, also after an operator.
 celfmt -i call.cel
 ! stderr .
 cmp stdout want_call.txt
@@ -8,6 +8,14 @@ celfmt -i want_call.txt
 ! stderr .
 cmp stdout want_call.txt
 
+celfmt -i operator.cel
+! stderr .
+cmp stdout want_operator.txt
+
+celfmt -i want_operator.txt
+! stderr .
+cmp stdout want_operator.txt
+
 -- call.cel --
 // c
 size
@@ -15,6 +23,19 @@ size
 	state.x
 )
 -- want_call.txt --
+// c
+size(
+	state.x
+)
+-- operator.cel --
+state.a +
+// c
+size
+(
+	state.x
+)
+-- want_operator.txt --
+state.a +
 // c
 size(
 	state.x
