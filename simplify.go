@@ -75,10 +75,6 @@ func inlineAs(a *ast.AST) {
 				continue
 			}
 
-			if n == 1 {
-				substituteIdent(result, name, init, info)
-			}
-
 			// Clear the outer .as() macro entry before any remap so we
 			// don't clobber a remapped inner entry that lands on the
 			// same ID.
@@ -86,13 +82,21 @@ func inlineAs(a *ast.AST) {
 
 			// If the result is a comprehension with its own macro call,
 			// the formatter will look it up by ID. After SetKindCase the
-			// content moves to comp's ID, so remap the entry (and
-			// substitute in the macro call expression, which is a
-			// separate tree).
-			if mcall, ok := info.GetMacroCall(result.ID()); ok {
-				if n == 1 {
-					substituteIdent(mcall, name, init, info)
+			// content moves to comp's ID, so remap the entry. The macro
+			// call expression is a separate tree, but it shares nodes
+			// with the result, so both are substituted in together.
+			if n == 1 {
+				trees := []ast.Expr{result}
+				if mcall, ok := info.GetMacroCall(result.ID()); ok {
+					trees = append(trees, mcall)
 				}
+				substituteIdent(name, init, info, trees...)
+			}
+			// Substituting can add a macro call at the ID of result, when
+			// result is the identifier that was replaced, so look for it
+			// after that.
+			mcall, hasMacro := info.GetMacroCall(result.ID())
+			if hasMacro {
 				info.SetMacroCall(comp.ID(), mcall)
 				info.ClearMacroCall(result.ID())
 			}
@@ -137,20 +141,35 @@ func countIdentInMacroTree(info *ast.SourceInfo, expr ast.Expr, ident string) in
 	return n
 }
 
-// substituteIdent replaces all IdentKind nodes named ident with replacement.
-// If info is non-nil and replacement has a macro call, the macro call is
-// copied to each substitution site so the formatter can find it by ID.
-func substituteIdent(expr ast.Expr, ident string, replacement ast.Expr, info *ast.SourceInfo) {
-	ast.PreOrderVisit(expr, ast.NewExprVisitor(func(e ast.Expr) {
-		if e.Kind() == ast.IdentKind && e.AsIdent() == ident {
-			e.SetKindCase(replacement)
-			if info != nil {
-				if mcall, ok := info.GetMacroCall(replacement.ID()); ok {
-					info.SetMacroCall(e.ID(), mcall)
-				}
+// substituteIdent replaces all IdentKind nodes named ident with replacement
+// in the trees. If info is non-nil and replacement has a macro call, the
+// macro call is copied to each substitution site so the formatter can find it
+// by ID.
+func substituteIdent(ident string, replacement ast.Expr, info *ast.SourceInfo, trees ...ast.Expr) {
+	// Find all of the sites before replacing any of them. The replacement
+	// may itself contain an identifier with the same name, for example in
+	// x.size().as(x, x + 1), and replacing while visiting would visit the
+	// replacement and replace that identifier too, without end. The trees
+	// can share nodes, such as a macro call and the comprehension it expands
+	// to, so a site is only replaced once.
+	var sites []ast.Expr
+	seen := make(map[ast.Expr]bool)
+	for _, tree := range trees {
+		ast.PreOrderVisit(tree, ast.NewExprVisitor(func(e ast.Expr) {
+			if e.Kind() == ast.IdentKind && e.AsIdent() == ident && !seen[e] {
+				seen[e] = true
+				sites = append(sites, e)
+			}
+		}))
+	}
+	for _, e := range sites {
+		e.SetKindCase(replacement)
+		if info != nil {
+			if mcall, ok := info.GetMacroCall(replacement.ID()); ok {
+				info.SetMacroCall(e.ID(), mcall)
 			}
 		}
-	}))
+	}
 }
 
 // substituteIdentInMacroTree replaces IdentKind nodes named ident with

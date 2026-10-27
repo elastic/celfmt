@@ -44,6 +44,9 @@ func TestSimplify(t *testing.T) {
 		{name: "as_nested_both_single", in: `a.as(x, b.as(y, x + y))`, want: `a + b`},
 		{name: "as_nested_inner_multi", in: `a.as(x, b.as(y, y + y + x))`, want: `b.as(y, y + y + a)`},
 		{name: "as_chain", in: `x.as(v, v.size())`, want: `x.size()`},
+		// The initial value uses the name that is bound.
+		{name: "as_self_reference", in: `x.size().as(x, x + 1)`, want: `x.size() + 1`},
+		{name: "as_rebound_unused_outer", in: `x.c.as(c, x.drop("c").as(x, x.map(k, k)))`, want: `x.drop("c").map(k, k)`},
 
 		// Boolean comparison elimination
 		{name: "eq_true", in: `x == true`, want: `x`},
