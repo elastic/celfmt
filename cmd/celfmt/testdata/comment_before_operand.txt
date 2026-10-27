@@ -1,0 +1,29 @@
+# A comment above the right-hand operand of a binary operator stays above
+# it. It used to be moved after the operator, and was lost when the result
+# was formatted again.
+celfmt -i add.cel
+! stderr .
+cmp stdout add.cel
+
+# With parentheses the comment is inside them.
+celfmt -i paren.cel
+! stderr .
+cmp stdout want_paren.txt
+
+celfmt -i want_paren.txt
+! stderr .
+cmp stdout want_paren.txt
+
+-- add.cel --
+state.a +
+// c
+state.b
+-- paren.cel --
+state.a *
+// c
+(state.b + state.c)
+-- want_paren.txt --
+state.a * (
+	// c
+	state.b + state.c
+)
