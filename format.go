@@ -270,6 +270,34 @@ func (un *formatter) Comment(id int64) string {
 	return " // " + strings.TrimSpace(strings.TrimPrefix(text[idx:], "//"))
 }
 
+// OpenComment returns the comment, if any, that follows the opening
+// bracket or brace of the expression with the given id on the same line.
+func (un *formatter) OpenComment(id int64) string {
+	if !un.options.pretty {
+		return ""
+	}
+	start := un.info.GetStartLocation(id)
+	text, ok := un.src.Snippet(start.Line())
+	if !ok {
+		return ""
+	}
+	rest := []rune(text)
+	if start.Column()+1 > len(rest) {
+		return ""
+	}
+	rest = rest[start.Column()+1:]
+	comment := strings.TrimSpace(string(rest))
+	if !strings.HasPrefix(comment, "//") {
+		return ""
+	}
+	loc := location{start.Line(), start.Column() + 1 + strings.Index(string(rest), "//")}
+	if _, ok := un.comments[loc]; ok {
+		return ""
+	}
+	un.comments[loc] = id
+	return " // " + strings.TrimSpace(strings.TrimPrefix(comment, "//"))
+}
+
 // ColonComment returns the comment, if any, that follows the colon between
 // the true and false branches of a conditional, where from and to are the
 // two branches. A comment on the line where from ends is found by Comment.
@@ -561,6 +589,7 @@ func (un *formatter) visitCallFunc(expr ast.Expr, macro bool) error {
 		}
 		if last != 0 && last < len(args) {
 			un.WriteString(",")
+			un.WriteString(un.Comment(un.lastChild(args[last-1]).ID()))
 		}
 		if last == len(args) {
 			if wasTern {
@@ -581,6 +610,7 @@ func (un *formatter) visitCallFunc(expr ast.Expr, macro bool) error {
 			if i < len(args[last:])-1 {
 				un.WriteString(",")
 			}
+			un.WriteString(un.Comment(un.lastChild(arg).ID()))
 		}
 		un.indent--
 		un.WriteNewLine()
@@ -597,6 +627,7 @@ func (un *formatter) visitCallFunc(expr ast.Expr, macro bool) error {
 			if i < len(args)-1 {
 				un.WriteString(",")
 			}
+			un.WriteString(un.Comment(un.lastChild(arg).ID()))
 		}
 		un.indent--
 		un.WriteNewLine()
@@ -739,6 +770,7 @@ func (un *formatter) visitList(expr ast.Expr) error {
 	}
 	un.WriteString("[")
 	if un.isMultiline(expr) {
+		un.WriteString(un.OpenComment(expr.ID()))
 		un.indent++
 		for i, elem := range elems {
 			un.WriteNewLine()
@@ -816,6 +848,7 @@ func (un *formatter) visitStructMsg(expr ast.Expr) error {
 	un.WriteString(m.TypeName())
 	un.WriteString("{")
 	if un.isMultiline(expr) {
+		un.WriteString(un.OpenComment(expr.ID()))
 		un.indent++
 		for i, f := range fields {
 			field := f.AsStructField()
@@ -871,6 +904,7 @@ func (un *formatter) visitStructMap(expr ast.Expr) error {
 	entries := m.Entries()
 	un.WriteString("{")
 	if un.isMultiline(expr) {
+		un.WriteString(un.OpenComment(expr.ID()))
 		un.indent++
 		for i, e := range entries {
 			entry := e.AsMapEntry()

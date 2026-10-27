@@ -1,0 +1,53 @@
+# Comments at the end of the lines of a call's arguments are kept.
+celfmt -i member.cel
+! stderr .
+cmp stdout want_member.txt
+
+celfmt -i want_member.txt
+! stderr .
+cmp stdout want_member.txt
+
+celfmt -i macro.cel
+! stderr .
+cmp stdout want_macro.txt
+
+celfmt -i want_macro.txt
+! stderr .
+cmp stdout want_macro.txt
+
+celfmt -i first.cel
+! stderr .
+cmp stdout want_first.txt
+
+celfmt -i want_first.txt
+! stderr .
+cmp stdout want_first.txt
+
+-- member.cel --
+state.x.with(
+	state.y // c1
+)
+-- want_member.txt --
+state.x.with(
+	state.y // c1
+)
+-- macro.cel --
+state.x.as(y,
+	y.z.as(w,
+		w + 1 // c2
+	)
+)
+-- want_macro.txt --
+state.x.as(y,
+	y.z.as(w,
+		w + 1 // c2
+	)
+)
+-- first.cel --
+state.x.as(y, // c4
+	y + 1
+)
+-- want_first.txt --
+state.x.as(y, // c4
+	y + 1
+)
