@@ -1,0 +1,19 @@
+# Without run_as_cel: true the template is not for the httpjson input
+# running as CEL, so cel.program is not a program that we know about.
+celfmt -agent -i src.cel
+! stderr .
+cmp stdout src.cel
+
+celfmt -agent -i nested.cel
+! stderr .
+cmp stdout nested.cel
+
+-- src.cel --
+interval: {{interval}}
+cel.program: |-
+  state.with({"events":[],"want_more":false})
+-- nested.cel --
+interval: {{interval}}
+cel:
+  program: |-
+    state.with({"events":[],"want_more":false})

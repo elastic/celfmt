@@ -3,6 +3,7 @@ celfmt -agent -i src.cel
 cmp stdout src.cel
 
 -- src.cel --
+run_as_cel: true
 interval: {{interval}}
 state:
   program: |

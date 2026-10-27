@@ -3,11 +3,13 @@ celfmt -agent -i src.cel
 cmp stdout want.txt
 
 -- src.cel --
+run_as_cel: true
 cel.program: >-
   state.with({"events":[],"want_more":false})
 tags:
   - run_as_cel
 -- want.txt --
+run_as_cel: true
 cel.program: |-
   state.with({"events": [], "want_more": false})
 tags:

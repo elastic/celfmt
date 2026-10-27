@@ -90,7 +90,7 @@ func Main() int {
 	}
 
 	if *agent || *extract {
-		// Templates are written out with Unix line endings.
+		// Templates are always written out with Unix line endings.
 		src := strings.ReplaceAll(buf.String(), "\r\n", "\n")
 		ast, err := parser.Parse(src)
 		if err != nil {
@@ -100,7 +100,12 @@ func Main() int {
 		if *agent {
 			indent = "  "
 		}
-		v := &visitor{indent: indent, simplify: *simplify, extract: *extract}
+		v := &visitor{
+			indent:   indent,
+			simplify: *simplify,
+			extract:  *extract,
+			runAsCEL: runAsCELKey.MatchString(src),
+		}
 		ast.Accept(v)
 		if v.err != nil {
 			log.Printf("%v", v.err)
@@ -147,6 +152,10 @@ type visitor struct {
 	extract  bool
 	err      error
 
+	// runAsCEL is whether the template configures the httpjson input
+	// to run as CEL, in which case the program is in cel.program.
+	runAsCEL bool
+
 	// seen is the text of all content nodes visited so far. It lets
 	// findProgram look back past handlebars blocks to find the
 	// parent key of an indented program field.
@@ -163,7 +172,7 @@ func (v *visitor) VisitProgram(node *ast.Program) any {
 func (v *visitor) VisitContent(s *ast.ContentStatement) any {
 	defer v.seen.WriteString(s.Value)
 
-	blk, ok := findProgram(v.seen.String(), s.Value)
+	blk, ok := findProgram(v.seen.String(), s.Value, v.runAsCEL)
 	if !ok {
 		return nil
 	}
@@ -194,21 +203,32 @@ type programBlock struct {
 	col int    // Column of the key.
 }
 
+// runAsCELKey matches a top level run_as_cel: true in a template.
+var runAsCELKey = regexp.MustCompile(`(?m)^run_as_cel:[ \t]+true[ \t]*(#.*)?$`)
+
 // programKey matches the start of a block scalar program field.
 var programKey = regexp.MustCompile(`(?m)^( *)(cel\.program|program):[ \t]+[|>][-+0-9]*([ \t]+#.*)?[ \t]*$`)
 
 // findProgram looks for a program field in s, the text of a content
 // node. The field is either a top level program (CEL input) or cel.program
 // (httpjson input with run_as_cel), or an indented program that is a child
-// of a top level cel key. before is the text that precedes s in the
-// template, used to find the parent of an indented field.
-func findProgram(before, s string) (programBlock, bool) {
+// of a top level cel key. The cel forms are only recognised if runAsCEL
+// is true. before is the text that precedes s in the template, used to
+// find the parent of an indented field.
+func findProgram(before, s string, runAsCEL bool) (programBlock, bool) {
 	for _, m := range programKey.FindAllStringSubmatchIndex(s, -1) {
 		start := m[0]
 		col := m[3] - m[2]
 		key := s[m[4]:m[5]]
-		if col != 0 && (key != "program" || !underCEL(before+s[:start], col)) {
-			continue
+		switch {
+		case key == "cel.program":
+			if !runAsCEL {
+				continue
+			}
+		case col != 0:
+			if !runAsCEL || !underCEL(before+s[:start], col) {
+				continue
+			}
 		}
 		end := blockEnd(s, m[1], col)
 		return programBlock{prefix: s[:start], body: s[start:end], suffix: s[end:], key: key, col: col}, true
@@ -240,8 +260,10 @@ func blockEnd(s string, from, col int) int {
 
 // underCEL returns whether the nearest preceding line in text that is
 // indented less than col is the top level key "cel". Blank and comment
-// lines are ignored. Handlebars statements that stand alone on a line have
-// already been removed from text by the template parser.
+// lines are ignored. Handlebars statements are not part of text. The parser
+// strips the whitespace around block, comment and partial statements that
+// stand alone on a line, and a standalone mustache leaves a blank line,
+// which is skipped.
 func underCEL(text string, col int) bool {
 	lines := strings.Split(text, "\n")
 	for i := len(lines) - 1; i >= 0; i-- {

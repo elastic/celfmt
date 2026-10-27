@@ -3,6 +3,7 @@ celfmt -agent -i src.cel
 cmp stdout want.txt
 
 -- src.cel --
+run_as_cel: true
 cel:
   state:
     a: 1
@@ -13,6 +14,7 @@ cel:
     state.with({"events":[],"want_more":false})
 {{/if}}
 -- want.txt --
+run_as_cel: true
 cel:
   state:
     a: 1
