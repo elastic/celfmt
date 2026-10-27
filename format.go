@@ -265,7 +265,7 @@ func (un *formatter) Comment(id int64) string {
 	if stop.Column() <= len(text) {
 		text = text[stop.Column():]
 	}
-	idx := strings.LastIndex(text, "//")
+	idx := commentIndex(text)
 	if idx < 0 {
 		return ""
 	}
@@ -277,6 +277,29 @@ func (un *formatter) Comment(id int64) string {
 	return " // " + strings.TrimSpace(strings.TrimPrefix(text[idx:], "//"))
 }
 
+// commentIndex returns the index in text of the // that starts a comment, or
+// -1 if text has no comment. A // in a string does not start a comment.
+func commentIndex(text string) int {
+	var quote byte
+	for i := 0; i < len(text); i++ {
+		c := text[i]
+		switch {
+		case quote != 0:
+			switch c {
+			case '\\':
+				i++
+			case quote:
+				quote = 0
+			}
+		case c == '"' || c == '\'' || c == '`':
+			quote = c
+		case c == '/' && strings.HasPrefix(text[i:], "//"):
+			return i
+		}
+	}
+	return -1
+}
+
 // endComment returns the comment, if any, at the end of the line where the
 // expression starts, or else at the end of the line of its last leaf.
 func (un *formatter) endComment(expr ast.Expr) string {
@@ -285,6 +308,34 @@ func (un *formatter) endComment(expr ast.Expr) string {
 		return c
 	}
 	return un.Comment(un.lastChild(expr).ID())
+}
+
+// OpenComment returns the comment, if any, that follows the opening
+// bracket or brace of the expression with the given id on the same line.
+func (un *formatter) OpenComment(id int64) string {
+	if !un.options.pretty {
+		return ""
+	}
+	start := un.info.GetStartLocation(id)
+	text, ok := un.src.Snippet(start.Line())
+	if !ok {
+		return ""
+	}
+	rest := []rune(text)
+	if start.Column()+1 > len(rest) {
+		return ""
+	}
+	rest = rest[start.Column()+1:]
+	comment := strings.TrimSpace(string(rest))
+	if !strings.HasPrefix(comment, "//") {
+		return ""
+	}
+	loc := location{start.Line(), start.Column() + 1 + strings.Index(string(rest), "//")}
+	if _, ok := un.comments[loc]; ok {
+		return ""
+	}
+	un.comments[loc] = id
+	return " // " + strings.TrimSpace(strings.TrimPrefix(comment, "//"))
 }
 
 // ColonComment returns the comment, if any, that follows the colon between
@@ -586,6 +637,7 @@ func (un *formatter) visitCallFunc(expr ast.Expr, macro bool) error {
 		}
 		if last != 0 && last < len(args) {
 			un.WriteString(",")
+			un.WriteString(un.Comment(un.lastChild(args[last-1]).ID()))
 		}
 		if last == len(args) {
 			if wasTern {
@@ -606,6 +658,7 @@ func (un *formatter) visitCallFunc(expr ast.Expr, macro bool) error {
 			if i < len(args[last:])-1 {
 				un.WriteString(",")
 			}
+			un.WriteString(un.Comment(un.lastChild(arg).ID()))
 		}
 		un.indent--
 		un.WriteNewLine()
@@ -622,6 +675,7 @@ func (un *formatter) visitCallFunc(expr ast.Expr, macro bool) error {
 			if i < len(args)-1 {
 				un.WriteString(",")
 			}
+			un.WriteString(un.Comment(un.lastChild(arg).ID()))
 		}
 		un.indent--
 		un.WriteNewLine()
@@ -764,6 +818,7 @@ func (un *formatter) visitList(expr ast.Expr) error {
 	}
 	un.WriteString("[")
 	if un.isMultiline(expr) {
+		un.WriteString(un.OpenComment(expr.ID()))
 		un.indent++
 		for i, elem := range elems {
 			un.WriteNewLine()
@@ -841,6 +896,7 @@ func (un *formatter) visitStructMsg(expr ast.Expr) error {
 	un.WriteString(m.TypeName())
 	un.WriteString("{")
 	if un.isMultiline(expr) {
+		un.WriteString(un.OpenComment(expr.ID()))
 		un.indent++
 		for i, f := range fields {
 			field := f.AsStructField()
@@ -896,6 +952,7 @@ func (un *formatter) visitStructMap(expr ast.Expr) error {
 	entries := m.Entries()
 	un.WriteString("{")
 	if un.isMultiline(expr) {
+		un.WriteString(un.OpenComment(expr.ID()))
 		un.indent++
 		for i, e := range entries {
 			entry := e.AsMapEntry()
