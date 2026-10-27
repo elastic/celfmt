@@ -46,6 +46,9 @@ func TestSimplify(t *testing.T) {
 		{name: "as_chain", in: `x.as(v, v.size())`, want: `x.size()`},
 		{name: "as_inner_inlined_outer_multi_use", in: `a.as(v, (v + v).as(w, w + 1))`, want: `a.as(v, v + v + 1)`},
 		{name: "as_init_filter_map", in: `x.filter(v, v > 0).map(v, v * 2).as(w, w)`, want: `x.map(v, v > 0, v * 2)`},
+		// The initial value uses the name that is bound.
+		{name: "as_self_reference", in: `x.size().as(x, x + 1)`, want: `x.size() + 1`},
+		{name: "as_rebound_unused_outer", in: `x.c.as(c, x.drop("c").as(x, x.map(k, k)))`, want: `x.drop("c").map(k, k)`},
 
 		// Boolean comparison elimination
 		{name: "eq_true", in: `x == true`, want: `x`},
