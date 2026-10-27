@@ -12,10 +12,15 @@ celfmt -i tab.cel
 ! stderr .
 cmp stdout want_tab.txt
 
-# The comment is kept when the condition spans several lines.
+# The comment is kept when the condition spans several lines, and still
+# there when the result is formatted again.
 celfmt -i multi.cel
 ! stderr .
 cmp stdout want_multi.txt
+
+celfmt -i want_multi.txt
+! stderr .
+stdout '\? // c4'
 
 -- space.cel --
 state.a ? // c1

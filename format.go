@@ -20,6 +20,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -260,14 +261,57 @@ func (un *formatter) Comment(id int64) string {
 	}
 	idx := strings.LastIndex(text, "//")
 	if idx < 0 {
-		return ""
+		return un.closerComment(start.Line(), id)
 	}
 	loc := location{start.Line(), stop.Column() + idx}
 	if _, ok := un.comments[loc]; ok {
-		return ""
+		return un.closerComment(start.Line(), id)
 	}
 	un.comments[loc] = id
 	return " // " + strings.TrimSpace(strings.TrimPrefix(text[idx:], "//"))
+}
+
+// closerComment matches a line that starts with closing brackets and has a
+// comment after them, allowing for a comma, question mark or colon.
+var closerComment = regexp.MustCompile(`^[)\]}]+[ \t,?:]*//(.*)$`)
+
+// closerLine matches a line that holds only closing brackets.
+var closerLine = regexp.MustCompile(`^[)\]},?:]+$`)
+
+// closerComment returns the comment, if any, on the lines after line that
+// start with closing brackets. It is used when the expression with the
+// given id ends the line where its last leaf is, and the closing brackets
+// that finish it are on lines of their own.
+//
+// The comment is written after the last leaf, which is not where it was.
+// For example, a comment after the closing brace of a map that is the value
+// of an entry is written after the last entry inside the map, where it reads
+// as a comment on that entry. That is better than losing the comment, but
+// it can change what the comment appears to say. The source information in
+// the AST does not record where closing brackets are, so the comment cannot
+// be tied to the bracket it followed. If it ever does, the comment should be
+// written after the closing bracket that the formatter writes instead.
+func (un *formatter) closerComment(line int, id int64) string {
+	for l := line + 1; ; l++ {
+		text, ok := un.src.Snippet(l)
+		if !ok {
+			return ""
+		}
+		text = strings.TrimSpace(text)
+		m := closerComment.FindStringSubmatchIndex(text)
+		if m == nil {
+			if closerLine.MatchString(text) {
+				continue
+			}
+			return ""
+		}
+		loc := location{l, m[2] - 2}
+		if _, ok := un.comments[loc]; ok {
+			return ""
+		}
+		un.comments[loc] = id
+		return " // " + strings.TrimSpace(text[m[2]:m[3]])
+	}
 }
 
 // OpenComment returns the comment, if any, that follows the opening
