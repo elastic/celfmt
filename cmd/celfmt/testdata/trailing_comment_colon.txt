@@ -1,0 +1,124 @@
+# A comment after the colon of a multi-line conditional is kept.
+celfmt -i plain.cel
+! stderr .
+cmp stdout want_plain.txt
+
+celfmt -i want_plain.txt
+! stderr .
+cmp stdout want_plain.txt
+
+# The else branch is not cuddled onto the colon when there is a comment.
+celfmt -i nested.cel
+! stderr .
+cmp stdout want_nested.txt
+
+celfmt -i want_nested.txt
+! stderr .
+cmp stdout want_nested.txt
+
+# The comment may follow the colon without a space, and a colon in a string
+# on the first line of the else branch is not mistaken for it.
+celfmt -i tight.cel
+! stderr .
+cmp stdout want_tight.txt
+
+celfmt -i string.cel
+! stderr .
+cmp stdout want_string.txt
+
+# Text in the else branch is not a comment, even when it has a colon followed
+# by two slashes, on the line after the colon or further into the branch.
+celfmt -i url.cel
+! stderr .
+cmp stdout url.cel
+
+celfmt -i deep.cel
+! stderr .
+cmp stdout deep.cel
+
+# The comment is kept when the true branch spans several lines.
+celfmt -i multi.cel
+! stderr .
+cmp stdout want_multi.txt
+
+celfmt -i want_multi.txt
+! stderr .
+cmp stdout want_multi.txt
+
+-- plain.cel --
+state.a ?
+	state.b
+: // c1
+	state.d
+-- want_plain.txt --
+state.a ?
+	state.b
+: // c1
+	state.d
+-- nested.cel --
+state.a ?
+	state.b
+: // c2
+	(
+		state.d ? state.e : state.f
+	)
+-- want_nested.txt --
+state.a ?
+	state.b
+: // c2
+	state.d ? state.e : state.f
+-- tight.cel --
+state.a ?
+	state.b
+:// c3
+	state.d
+-- want_tight.txt --
+state.a ?
+	state.b
+: // c3
+	state.d
+-- string.cel --
+state.a ?
+	state.b
+: "http://example.com"
+-- want_string.txt --
+state.a ?
+	state.b
+:
+	"http://example.com"
+-- url.cel --
+state.a ?
+	state.b
+:
+	"https://example.com"
+-- deep.cel --
+state.a ?
+	state.b
+:
+	state.links.map(attr,
+		attr.matches("^<https?://")
+	).filter(x,
+		x
+	)
+-- multi.cel --
+state.a ?
+	{
+		"a": 1,
+		"b": 2,
+	}
+: // c4
+	state.d ?
+		state.e
+	:
+		state.f
+-- want_multi.txt --
+state.a ?
+	{
+		"a": 1,
+		"b": 2,
+	}
+: // c4
+	state.d ?
+		state.e
+	:
+		state.f

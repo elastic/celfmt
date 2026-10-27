@@ -277,6 +277,75 @@ func (un *formatter) Comment(id int64) string {
 	return " // " + strings.TrimSpace(strings.TrimPrefix(text[idx:], "//"))
 }
 
+// endComment returns the comment, if any, at the end of the line where the
+// expression starts, or else at the end of the line of its last leaf.
+func (un *formatter) endComment(expr ast.Expr) string {
+	c := un.Comment(expr.ID())
+	if c != "" {
+		return c
+	}
+	return un.Comment(un.lastChild(expr).ID())
+}
+
+// ColonComment returns the comment, if any, that follows the colon between
+// the true and false branches of a conditional, where from and to are the
+// two branches. A comment on the line where from ends is found by Comment.
+// The colon is on the first line after the start of from that begins with
+// closing brackets and then a colon. Other lines are part of from, which
+// can end several lines after it starts, or are comments or blank. The
+// false branch is not searched, since a colon in it, such as the colon in
+// a URL, is not the colon between the branches.
+func (un *formatter) ColonComment(from, to ast.Expr) string {
+	if !un.options.pretty {
+		return ""
+	}
+	last := un.lastChild(from)
+	first := un.info.GetStartLocation(last.ID()).Line()
+	end := un.info.GetStartLocation(to.ID()).Line()
+	for line := first + 1; line <= end; line++ {
+		text, ok := un.src.Snippet(line)
+		if !ok {
+			return ""
+		}
+		if !strings.HasPrefix(strings.TrimLeft(text, ")]} \t"), ":") {
+			continue
+		}
+		idx := colonCommentIndex(text)
+		if idx < 0 {
+			return ""
+		}
+		loc := location{line, idx}
+		if _, ok := un.comments[loc]; ok {
+			return ""
+		}
+		un.comments[loc] = last.ID()
+		return " // " + strings.TrimSpace(strings.TrimPrefix(text[idx:], "//"))
+	}
+	return ""
+}
+
+// colonCommentIndex returns the index in line of the // that starts a
+// comment directly after the first colon, or -1 if there is no colon or it
+// is not followed by a comment. A comment that starts before the colon
+// makes the line a comment line. Between the branches of a conditional
+// there is nothing but the colon, closing parentheses and comments, so the
+// colon cannot be in a string.
+func colonCommentIndex(line string) int {
+	for i := 0; i < len(line); i++ {
+		switch {
+		case strings.HasPrefix(line[i:], "//"):
+			return -1
+		case line[i] == ':':
+			rest := strings.TrimLeft(line[i+1:], " \t")
+			if !strings.HasPrefix(rest, "//") {
+				return -1
+			}
+			return len(line) - len(rest)
+		}
+	}
+	return -1
+}
+
 func (un *formatter) visit(expr ast.Expr, macro bool) error {
 	if un.err != nil {
 		return un.err
@@ -404,7 +473,7 @@ func (un *formatter) visitCallConditional(expr ast.Expr) error {
 	if un.isMultiline(expr) {
 		un.WriteString(" ?")
 		un.indent++
-		un.WriteString(un.Comment(args[0].ID()))
+		un.WriteString(un.endComment(args[0]))
 		un.WriteNewLine()
 
 		// add parens if operand is a conditional itself.
@@ -416,14 +485,16 @@ func (un *formatter) visitCallConditional(expr ast.Expr) error {
 		}
 
 		un.indent--
-		un.WriteString(un.Comment(args[1].ID()))
+		un.WriteString(un.endComment(args[1]))
 		un.WriteNewLine()
 		un.WriteString(":")
+		colon := un.ColonComment(args[1], args[2])
 		cuddle := args[2].Kind() == ast.CallKind && args[2].AsCall().FunctionName() == operators.Conditional &&
-			!un.hasCommentsForExpr(args[2].ID())
+			!un.hasCommentsForExpr(args[2].ID()) && colon == ""
 		if cuddle {
 			un.WriteString(" ")
 		} else {
+			un.WriteString(colon)
 			un.indent++
 			un.WriteNewLine()
 		}
