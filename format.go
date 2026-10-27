@@ -372,6 +372,14 @@ func (un *formatter) visitCallBinary(expr ast.Expr) error {
 		return fmt.Errorf("cannot unmangle operator: %s", fun)
 	}
 
+	if !rhsParen && un.hasCommentsForExpr(rhs.ID()) {
+		// Keep the comment above the operand rather than after the
+		// operator, where it is lost when the output is formatted again.
+		// With parentheses the comment is written inside them.
+		un.WriteString(" " + unmangled)
+		un.WriteNewLine()
+		return un.visitMaybeNested(rhs, rhsParen)
+	}
 	un.writeOperatorWithWrapping(fun, unmangled)
 	return un.visitMaybeNested(rhs, rhsParen)
 }
