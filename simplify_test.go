@@ -69,6 +69,13 @@ func TestSimplify(t *testing.T) {
 		{name: "has_ternary_no_match_op", in: `has(x.f) ? x.f + 1 : 0`, want: `has(x.f) ? (x.f + 1) : 0`},
 		{name: "has_ternary_no_match_field", in: `has(x.f) ? x.g : 0`, want: `has(x.f) ? x.g : 0`},
 		{name: "has_ternary_no_match_operand", in: `has(x.f) ? y.f : 0`, want: `has(x.f) ? y.f : 0`},
+		// has ternary in the arguments of a macro call
+		{name: "has_ternary_in_macro_arg", in: `x.map(e, has(e.f) ? e.f : "d")`, want: `x.map(e, e.?f.orValue("d"))`},
+		{name: "has_ternary_negated_in_macro_arg", in: `x.map(e, !has(e.f) ? "d" : e.f)`, want: `x.map(e, e.?f.orValue("d"))`},
+		{name: "has_ternary_nested_macro_arg", in: `x.map(e, has(e.f.g) ? e.f.g : e.h.map(k, has(k.z) ? k.z : 0))`, want: `x.map(e, e.f.?g.orValue(e.h.map(k, k.?z.orValue(0))))`},
+		{name: "has_ternary_no_match_in_macro_arg", in: `x.map(e, has(e.f) ? e.g : "d")`, want: `x.map(e, has(e.f) ? e.g : "d")`},
+		{name: "has_ternary_in_as", in: `x.as(r, has(r.f) ? r.f : r.g)`, want: `x.as(r, r.?f.orValue(r.g))`},
+		{name: "has_ternary_in_inlined_macro", in: `x.map(e, has(e.f) ? e.f : "d").as(q, {"k": q})`, want: `{"k": x.map(e, e.?f.orValue("d"))}`},
 		{
 			name: "has_ternary_comment_on_access",
 			in:   "has(x.f) ?\n\t// keep this\n\tx.f\n:\n\t0",

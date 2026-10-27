@@ -288,35 +288,117 @@ func asBool(e ast.Expr) (bool, bool) {
 func elimHasTernary(a *ast.AST, src common.Source) {
 	info := a.SourceInfo()
 	fac := ast.NewExprFactory()
+	var rewritten []int64
+
+	// A macro call is printed from its own tree, which holds a copy of each
+	// conditional in its arguments, so rewrite those as well. Do that first,
+	// since the expression is only rewritten if nothing in a macro call is
+	// left referring to its has() call.
+	for _, id := range macroCallIDs(info) {
+		call, _ := info.GetMacroCall(id)
+		ast.PreOrderVisit(call, ast.NewExprVisitor(func(e ast.Expr) {
+			h, ok := rewriteHasTernary(e, info, src, fac)
+			if ok {
+				rewritten = append(rewritten, h)
+			}
+		}))
+	}
 	ast.PreOrderVisit(a.Expr(), ast.NewExprVisitor(func(e ast.Expr) {
-		if e.Kind() != ast.CallKind {
+		h, ok := matchHasTernaryExpr(e, info, src, fac)
+		if !ok || placeholderExists(info, h) {
 			return
 		}
-		c := e.AsCall()
-		if c.FunctionName() != operators.Conditional {
-			return
-		}
-		args := c.Args()
-		if len(args) != 3 {
-			return
-		}
-
-		hasSel, access, dflt := matchHasTernary(args[0], args[1], args[2])
-		if hasSel == nil {
-			return
-		}
-		if hasComment(src, info, access.ID()) {
-			return
-		}
-
-		sel := hasSel.AsSelect()
-		optSel := fac.NewCall(hasSel.ID(), operators.OptSelect,
-			sel.Operand(), fac.NewLiteral(access.ID(), types.String(sel.FieldName())))
-		orVal := fac.NewMemberCall(e.ID(), "orValue", optSel, dflt)
-
-		e.SetKindCase(orVal)
-		info.ClearMacroCall(hasSel.ID())
+		rewriteHasTernary(e, info, src, fac)
+		rewritten = append(rewritten, h)
 	}))
+	for _, h := range rewritten {
+		if !placeholderExists(info, h) {
+			info.ClearMacroCall(h)
+		}
+	}
+}
+
+// rewriteHasTernary rewrites e if it is a has(x.f) ? x.f : d conditional or
+// its negated form, and returns the ID of the has() call.
+func rewriteHasTernary(e ast.Expr, info *ast.SourceInfo, src common.Source, fac ast.ExprFactory) (int64, bool) {
+	h, ok := matchHasTernaryExpr(e, info, src, fac)
+	if !ok {
+		return 0, false
+	}
+	args := e.AsCall().Args()
+	hasSel, access, dflt := matchHasTernary(presenceCond(args[0], info, fac), args[1], args[2])
+	sel := hasSel.AsSelect()
+	optSel := fac.NewCall(hasSel.ID(), operators.OptSelect,
+		sel.Operand(), fac.NewLiteral(access.ID(), types.String(sel.FieldName())))
+	e.SetKindCase(fac.NewMemberCall(e.ID(), "orValue", optSel, dflt))
+	return h, true
+}
+
+// matchHasTernaryExpr returns the ID of the has() call if e is a
+// has(x.f) ? x.f : d conditional or its negated form that can be rewritten.
+func matchHasTernaryExpr(e ast.Expr, info *ast.SourceInfo, src common.Source, fac ast.ExprFactory) (int64, bool) {
+	if e.Kind() != ast.CallKind {
+		return 0, false
+	}
+	c := e.AsCall()
+	if c.FunctionName() != operators.Conditional {
+		return 0, false
+	}
+	args := c.Args()
+	if len(args) != 3 {
+		return 0, false
+	}
+	hasSel, access, _ := matchHasTernary(presenceCond(args[0], info, fac), args[1], args[2])
+	if hasSel == nil || hasComment(src, info, access.ID()) {
+		return 0, false
+	}
+	return hasSel.ID(), true
+}
+
+// presenceCond returns cond with any has() call in it that is a placeholder
+// in a macro call replaced by the presence test it stands for. In the AST a
+// has() call is already a presence test.
+func presenceCond(cond ast.Expr, info *ast.SourceInfo, fac ast.ExprFactory) ast.Expr {
+	if isNegation(cond) {
+		arg := presenceTest(cond.AsCall().Args()[0], info, fac)
+		return fac.NewCall(cond.ID(), operators.LogicalNot, arg)
+	}
+	return presenceTest(cond, info, fac)
+}
+
+func isNegation(e ast.Expr) bool {
+	return e.Kind() == ast.CallKind && e.AsCall().FunctionName() == operators.LogicalNot && len(e.AsCall().Args()) == 1
+}
+
+// presenceTest returns the presence test that e stands for if e is a
+// placeholder for a has() macro call, and e otherwise.
+func presenceTest(e ast.Expr, info *ast.SourceInfo, fac ast.ExprFactory) ast.Expr {
+	if e.Kind() != ast.UnspecifiedExprKind {
+		return e
+	}
+	call, ok := info.GetMacroCall(e.ID())
+	if !ok || call.Kind() != ast.CallKind || call.AsCall().FunctionName() != "has" || len(call.AsCall().Args()) != 1 {
+		return e
+	}
+	sel := call.AsCall().Args()[0]
+	if sel.Kind() != ast.SelectKind {
+		return e
+	}
+	return fac.NewPresenceTest(e.ID(), sel.AsSelect().Operand(), sel.AsSelect().FieldName())
+}
+
+// placeholderExists returns whether a macro call has a placeholder with the
+// given ID.
+func placeholderExists(info *ast.SourceInfo, id int64) bool {
+	var found bool
+	for _, call := range info.MacroCalls() {
+		ast.PreOrderVisit(call, ast.NewExprVisitor(func(e ast.Expr) {
+			if e.Kind() == ast.UnspecifiedExprKind && e.ID() == id {
+				found = true
+			}
+		}))
+	}
+	return found
 }
 
 // hasComment reports whether there are comment lines immediately preceding
