@@ -49,6 +49,7 @@ func TestSimplify(t *testing.T) {
 		// The initial value uses the name that is bound.
 		{name: "as_self_reference", in: `x.size().as(x, x + 1)`, want: `x.size() + 1`},
 		{name: "as_rebound_unused_outer", in: `x.c.as(c, x.drop("c").as(x, x.map(k, k)))`, want: `x.drop("c").map(k, k)`},
+		{name: "as_rebound_used_outer", in: `x.c.as(c, x.drop("c").as(x, c.map(k, k)))`, want: `x.c.map(k, k)`},
 
 		// Boolean comparison elimination
 		{name: "eq_true", in: `x == true`, want: `x`},
@@ -140,6 +141,9 @@ func TestSimplifyRepeated(t *testing.T) {
 		// The macro call of the filter is registered under two IDs once
 		// the .as() has been inlined, and both have to be folded.
 		{name: "as_init_filter_map", in: `x.filter(v, v > 0).map(v, v * 2).as(w, w)`, want: `x.map(v, v > 0, v * 2)`},
+		// Inlining c first would put the outer x into the scope of the
+		// inner x.
+		{name: "rebound_name", in: `x.c.as(c, x.drop("c").as(x, c.map(k, {"m": x.with({"k": k})})))`, want: `x.c.map(k, {"m": x.drop("c").with({"k": k})})`},
 	}
 
 	env := newTestEnv(t)

@@ -50,7 +50,8 @@ func inlineAs(a *ast.AST) {
 	// unspecified map-iteration-after-mutation behaviour.
 	for {
 		inlined := false
-		for id, call := range info.MacroCalls() {
+		for _, id := range macroCallIDs(info) {
+			call, _ := info.GetMacroCall(id)
 			if call.Kind() != ast.CallKind {
 				continue
 			}
@@ -136,6 +137,25 @@ func replaceMacroPlaceholders(info *ast.SourceInfo, id int64, repl ast.Expr) {
 			}
 		}))
 	}
+}
+
+// macroCallIDs returns the IDs of the macro calls in info in ascending order.
+// The rewrites that look for a macro call to change use it so that the result
+// does not depend on the order in which the map is iterated. The parser
+// expands a macro call after the macro calls in its arguments, so an inner
+// call has a lower ID than the call that contains it and is rewritten first.
+// That helps when the inner call is inlined too, as in x.as(a, y.as(x, a + x)),
+// where inlining a first would put the outer x into the scope of the inner x.
+// It does not help when the inner call stays, as in
+// x.as(a, y.as(x, [x, x, a])): the inner x is used twice, so inlining a puts
+// it in the scope of the inner x.
+func macroCallIDs(info *ast.SourceInfo) []int64 {
+	ids := make([]int64, 0, len(info.MacroCalls()))
+	for id := range info.MacroCalls() {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	return ids
 }
 
 // countIdent counts IdentKind nodes in expr whose name matches ident.
@@ -439,7 +459,8 @@ func foldFilter(a *ast.AST) {
 	fac := ast.NewExprFactory()
 	for {
 		folded := false
-		for id, call := range info.MacroCalls() {
+		for _, id := range macroCallIDs(info) {
+			call, _ := info.GetMacroCall(id)
 			if call.Kind() != ast.CallKind {
 				continue
 			}
