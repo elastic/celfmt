@@ -50,6 +50,7 @@ func TestSimplify(t *testing.T) {
 		{name: "as_rebound_used_outer", in: `x.c.as(c, x.drop("c").as(x, c.map(k, k)))`, want: `x.c.map(k, k)`},
 		// An inlined .as() in a branch of a conditional in an .as() that stays.
 		{name: "as_in_conditional_branch", in: `x.as(r, r.b ? r.c.as(v, {"k": v.d}) : {})`, want: `x.as(r, r.b ? {"k": r.c.d} : {})`},
+		{name: "as_in_conditional_branch_filter_map", in: `x.as(r, r.b ? r.i.filter(v, v > 0).map(v, v * 2).as(q, {"k": q}) : r.i)`, want: `x.as(r, r.b ? {"k": r.i.map(v, v > 0, v * 2)} : r.i)`},
 
 		// Boolean comparison elimination
 		{name: "eq_true", in: `x == true`, want: `x`},

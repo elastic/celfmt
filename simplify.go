@@ -461,7 +461,18 @@ func foldFilter(a *ast.AST) {
 			}
 			newArgs := []ast.Expr{iterVar, filterCond, args[1]}
 			newMCall := fac.NewMemberCall(0, fn, filterTarget, newArgs...)
-			info.SetMacroCall(id, newMCall)
+			// Inlining an .as() can copy a macro call to the ID of the
+			// site where it was used, so the same macro call can be
+			// registered under more than one ID. Rewrite all of them.
+			ids := []int64{id}
+			for _, other := range macroCallIDs(info) {
+				if mc, _ := info.GetMacroCall(other); other != id && mc == call {
+					ids = append(ids, other)
+				}
+			}
+			for _, other := range ids {
+				info.SetMacroCall(other, newMCall)
+			}
 			info.ClearMacroCall(target.ID())
 
 			// Update the AST: skip the filter comprehension so the
@@ -470,7 +481,7 @@ func foldFilter(a *ast.AST) {
 			// stays at its original ID — the new macro tree references
 			// it there via an unspecified-expr placeholder.
 			ast.PreOrderVisit(a.Expr(), ast.NewExprVisitor(func(e ast.Expr) {
-				if e.ID() != id || e.Kind() != ast.ComprehensionKind {
+				if !slices.Contains(ids, e.ID()) || e.Kind() != ast.ComprehensionKind {
 					return
 				}
 				iterRange := e.AsComprehension().IterRange()
