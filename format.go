@@ -592,11 +592,13 @@ func (un *formatter) visitCallFunc(expr ast.Expr, macro bool) error {
 
 		// get AST ID for macro. this is not stored in the
 		// expression, so we need to do a scan of all macros.
+		// Simplification can leave the same macro call registered under
+		// more than one ID. The lowest is the original, which is next to
+		// the arguments, so use it and do not depend on the map order.
 		var id int64
 		for candid, cand := range un.info.MacroCalls() {
-			if expr == cand {
+			if expr == cand && (id == 0 || candid < id) {
 				id = candid
-				break
 			}
 		}
 		base := un.info.GetStartLocation(id).Line()

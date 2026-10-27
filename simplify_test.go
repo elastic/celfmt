@@ -103,6 +103,62 @@ func TestSimplify(t *testing.T) {
 	}
 }
 
+// TestSimplifyDeterministic checks that the output does not depend on the
+// order in which the macro calls are visited, which is not specified.
+func TestSimplifyDeterministic(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+	}{
+		{
+			// Inlining the first .as() leaves its macro call registered
+			// under both the original and the substituted ID, and the
+			// formatter must choose between them in a fixed way.
+			name: "macro_call_ids",
+			in: "x.?cursor.next_link.orValue(\"\").as(next_link,\n" +
+				"\t(next_link != \"\") ?\n" +
+				"\t\tnext_link\n" +
+				"\t:\n" +
+				"\t\t\"z\"\n" +
+				").as(out,\n" +
+				"\ty.as(w,\n" +
+				"\t\tw + out\n" +
+				"\t)\n" +
+				")",
+		},
+	}
+
+	env := newTestEnv(t)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			format := func() string {
+				compiled, iss := env.Compile(tt.in)
+				if iss != nil {
+					t.Fatalf("Compile(%q): %v", tt.in, iss)
+				}
+				native := compiled.NativeRep()
+				src := common.NewTextSource(tt.in)
+				Simplify(native, src)
+				var buf strings.Builder
+				err := Format(&buf, native, src, Pretty())
+				if err != nil {
+					t.Fatalf("Format() after Simplify(%q): %v", tt.in, err)
+				}
+				return buf.String()
+			}
+
+			// The unordered iteration differed about one time in eight.
+			want := format()
+			for i := 0; i < 500; i++ {
+				got := format()
+				if got != want {
+					t.Fatalf("Simplify(%q) is not deterministic:\nfirst: %q\nrun %d: %q", tt.in, want, i+1, got)
+				}
+			}
+		})
+	}
+}
+
 func newTestEnv(t *testing.T) *cel.Env {
 	t.Helper()
 	env, err := cel.NewEnv(
