@@ -1,0 +1,56 @@
+# The opening parenthesis lines that a comment can be above are lines that
+# hold only opening parentheses, with optional white space between them.
+celfmt -i double.cel
+! stderr .
+cmp stdout want_double.txt
+
+celfmt -i spaced.cel
+! stderr .
+cmp stdout want_spaced.txt
+
+# A comment on the parenthesis line follows the comment above that line.
+celfmt -i trailing.cel
+! stderr .
+cmp stdout want_trailing.txt
+
+celfmt -i want_trailing.txt
+! stderr .
+cmp stdout want_trailing.txt
+
+-- double.cel --
+state.with(
+	// c1
+	((
+		state.x
+	)).as(y, {"a": y})
+)
+-- want_double.txt --
+state.with(
+	// c1
+	state.x.as(y, {"a": y})
+)
+-- spaced.cel --
+state.with(
+	// c2
+	( (
+		state.x
+	) ).as(y, {"a": y})
+)
+-- want_spaced.txt --
+state.with(
+	// c2
+	state.x.as(y, {"a": y})
+)
+-- trailing.cel --
+state.with(
+	// c3
+	( // c4
+		state.x
+	).as(y, {"a": y})
+)
+-- want_trailing.txt --
+state.with(
+	// c3
+	// c4
+	state.x.as(y, {"a": y})
+)

@@ -1,0 +1,42 @@
+# A comment above a parenthesised else branch that is cuddled onto the colon.
+celfmt -i src.cel -o out1.cel
+! stderr .
+cmp out1.cel want.txt
+
+# Verify idempotency; the comment was dropped on the second pass.
+celfmt -i out1.cel -o out2.cel
+! stderr .
+cmp out1.cel out2.cel
+
+# The same with the comment on the parenthesis line.
+celfmt -i trailing.cel
+! stderr .
+cmp stdout want_trailing.txt
+
+celfmt -i want_trailing.txt
+! stderr .
+cmp stdout want_trailing.txt
+
+-- src.cel --
+state.a ? state.b :
+	// c
+	(
+		state.d ? state.e : state.f
+	)
+-- want.txt --
+state.a ?
+	state.b
+:
+	// c
+	state.d ? state.e : state.f
+-- trailing.cel --
+state.a ? state.b :
+	( // c
+		state.d ? state.e : state.f
+	)
+-- want_trailing.txt --
+state.a ?
+	state.b
+:
+	// c
+	state.d ? state.e : state.f

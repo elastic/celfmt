@@ -165,9 +165,24 @@ func (un *formatter) CommentBlock(id int64) []string {
 	start := un.info.GetStartLocation(id)
 	first := true // ¯\_(ツ)_/¯ The AST's position information is weaker than is ideal.
 	wasBlank := false
+	skippedParen := false
 	for line := start.Line(); line > 0; line-- {
 		text, ok := un.src.Snippet(line)
 		comment := strings.TrimSpace(text)
+		if trailing, ok := parenLine(comment); ok && (trailing == "" || !first) {
+			// Parentheses are not in the AST, so a comment above
+			// a line holding only an opening parenthesis belongs to
+			// the expression inside it, and so does a comment on that
+			// line. The line does not count as the first line, since
+			// the position of a call is that of its opening
+			// parenthesis, which may be on a line of its own below the
+			// name of the function.
+			skippedParen = true
+			if trailing == "" {
+				continue
+			}
+			comment = trailing
+		}
 		if !ok || (comment != "" && !strings.HasPrefix(comment, "//")) {
 			if first {
 				first = false
@@ -208,8 +223,26 @@ func (un *formatter) CommentBlock(id int64) []string {
 			wasBlank = true
 		}
 	}
+	if skippedParen && !slices.ContainsFunc(comments, func(c string) bool { return c != "" }) {
+		// Blank lines above a parenthesis with no comment are not
+		// carried inside it.
+		return nil
+	}
 	slices.Reverse(comments)
 	return comments
+}
+
+// parenLine returns whether the trimmed line s holds only opening
+// parentheses and an optional comment, and the comment if it has one.
+func parenLine(s string) (comment string, ok bool) {
+	rest := strings.TrimLeft(s, "( \t")
+	if !strings.Contains(s[:len(s)-len(rest)], "(") {
+		return "", false
+	}
+	if rest != "" && !strings.HasPrefix(rest, "//") {
+		return "", false
+	}
+	return rest, true
 }
 
 func (un *formatter) Comment(id int64) string {
@@ -957,6 +990,12 @@ func (un *formatter) hasCommentsForExpr(id int64) bool {
 	for line := start.Line(); line > 0; line-- {
 		text, ok := un.src.Snippet(line)
 		comment := strings.TrimSpace(text)
+		if trailing, ok := parenLine(comment); ok && (trailing == "" || !first) {
+			if trailing == "" {
+				continue
+			}
+			comment = trailing
+		}
 		if !ok || (comment != "" && !strings.HasPrefix(comment, "//")) {
 			if first {
 				first = false

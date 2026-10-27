@@ -276,6 +276,12 @@ func hasComment(src common.Source, info *ast.SourceInfo, id int64) bool {
 		if trimmed == "" {
 			continue
 		}
+		if comment, ok := parenLine(trimmed); ok {
+			if comment == "" {
+				continue
+			}
+			return true
+		}
 		return strings.HasPrefix(trimmed, "//")
 	}
 	return false
