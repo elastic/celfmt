@@ -43,6 +43,15 @@ celfmt -s -i negated_question.cel
 cmp stdout want_negated_question.txt
 stdout '// why'
 
+# The same inside a macro call.
+celfmt -i macro.cel
+! stderr .
+cp stdout want_macro.txt
+celfmt -s -i macro.cel
+! stderr .
+cmp stdout want_macro.txt
+stdout '// why'
+
 # Without a comment it is rewritten.
 celfmt -s -i plain.cel
 ! stderr .
@@ -78,3 +87,10 @@ has(state.x.f) ?
 	"default"
 :
 	state.x.f
+-- macro.cel --
+state.items.map(e,
+	has(e.f) ? // why
+		e.f
+	:
+		"default"
+)

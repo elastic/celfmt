@@ -66,13 +66,22 @@ func TestSimplify(t *testing.T) {
 
 		// has(x.f) ? x.f : d → x.?f.orValue(d)
 		{name: "has_ternary", in: `has(x.f) ? x.f : "default"`, want: `x.?f.orValue("default")`},
-		{name: "has_ternary_in_as_init", in: `(has(x.f) ? x.f : 0).as(v, v + v)`, want: `(has(x.f) ? x.f : 0).as(v, v + v)`},
-		{name: "has_ternary_in_map_body", in: `x.map(v, has(v.f) ? v.f : 0)`, want: `x.map(v, has(v.f) ? v.f : 0)`},
+		{name: "has_ternary_in_as_init", in: `(has(x.f) ? x.f : 0).as(v, v + v)`, want: `x.?f.orValue(0).as(v, v + v)`},
+		{name: "has_ternary_in_map_body", in: `x.map(v, has(v.f) ? v.f : 0)`, want: `x.map(v, v.?f.orValue(0))`},
 		{name: "has_ternary_deep", in: `has(x.f.g) ? x.f.g : 0`, want: `x.f.?g.orValue(0)`},
+		// The rewrite leaves the variable used once, so it is inlined in the same pass.
+		{name: "has_ternary_then_as", in: `x.as(b, {"w": has(b.s) ? b.s : []})`, want: `{"w": x.?s.orValue([])}`},
 		{name: "has_ternary_negated", in: `!has(x.f) ? "default" : x.f`, want: `x.?f.orValue("default")`},
 		{name: "has_ternary_no_match_op", in: `has(x.f) ? x.f + 1 : 0`, want: `has(x.f) ? (x.f + 1) : 0`},
 		{name: "has_ternary_no_match_field", in: `has(x.f) ? x.g : 0`, want: `has(x.f) ? x.g : 0`},
 		{name: "has_ternary_no_match_operand", in: `has(x.f) ? y.f : 0`, want: `has(x.f) ? y.f : 0`},
+		// has ternary in the arguments of a macro call
+		{name: "has_ternary_in_macro_arg", in: `x.map(e, has(e.f) ? e.f : "d")`, want: `x.map(e, e.?f.orValue("d"))`},
+		{name: "has_ternary_negated_in_macro_arg", in: `x.map(e, !has(e.f) ? "d" : e.f)`, want: `x.map(e, e.?f.orValue("d"))`},
+		{name: "has_ternary_nested_macro_arg", in: `x.map(e, has(e.f.g) ? e.f.g : e.h.map(k, has(k.z) ? k.z : 0))`, want: `x.map(e, e.f.?g.orValue(e.h.map(k, k.?z.orValue(0))))`},
+		{name: "has_ternary_no_match_in_macro_arg", in: `x.map(e, has(e.f) ? e.g : "d")`, want: `x.map(e, has(e.f) ? e.g : "d")`},
+		{name: "has_ternary_in_as", in: `x.as(r, has(r.f) ? r.f : r.g)`, want: `x.as(r, r.?f.orValue(r.g))`},
+		{name: "has_ternary_in_inlined_macro", in: `x.map(e, has(e.f) ? e.f : "d").as(q, {"k": q})`, want: `{"k": x.map(e, e.?f.orValue("d"))}`},
 		{
 			name: "has_ternary_comment_on_access",
 			in:   "has(x.f) ?\n\t// keep this\n\tx.f\n:\n\t0",
