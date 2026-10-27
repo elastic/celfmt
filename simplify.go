@@ -104,12 +104,31 @@ func inlineAs(a *ast.AST) {
 			}
 
 			comp.SetKindCase(result)
+			if !hasMacro {
+				replacePlaceholders(info, comp)
+			}
 			inlined = true
 			break
 		}
 		if !inlined {
 			return
 		}
+	}
+}
+
+// replacePlaceholders replaces the placeholders for e in the macro calls with
+// e. A macro call that contains another macro call has a placeholder with
+// the ID of the inner call where the inner call would be, and the formatter
+// finds the inner call by that ID. If the inner call has been rewritten to
+// something that is not a macro call, there is nothing to find, and the
+// placeholder must be the expression instead.
+func replacePlaceholders(info *ast.SourceInfo, e ast.Expr) {
+	for _, call := range info.MacroCalls() {
+		ast.PreOrderVisit(call, ast.NewExprVisitor(func(x ast.Expr) {
+			if x.Kind() == ast.UnspecifiedExprKind && x.ID() == e.ID() {
+				x.SetKindCase(e)
+			}
+		}))
 	}
 }
 
