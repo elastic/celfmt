@@ -1,0 +1,37 @@
+# A comment above a parenthesised operand prevents the rewrite, as it does
+# without the parentheses.
+celfmt -s -i src.cel
+! stderr .
+cmp stdout want.txt
+
+celfmt -s -i trailing.cel
+! stderr .
+cmp stdout want_trailing.txt
+
+-- src.cel --
+has(state.x.f) ?
+	// this comment prevents a re-write
+	(
+		state.x.f
+	)
+:
+	"default"
+-- want.txt --
+has(state.x.f) ?
+	// this comment prevents a re-write
+	state.x.f
+:
+	"default"
+-- trailing.cel --
+has(state.x.f) ?
+	(  // this comment prevents a re-write
+		state.x.f
+	)
+:
+	"default"
+-- want_trailing.txt --
+has(state.x.f) ?
+	// this comment prevents a re-write
+	state.x.f
+:
+	"default"
