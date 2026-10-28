@@ -1,0 +1,67 @@
+# A comment after the question mark of a multi-line conditional is kept,
+# with or without white space before it.
+celfmt -i space.cel
+! stderr .
+cmp stdout want_space.txt
+
+celfmt -i tight.cel
+! stderr .
+cmp stdout want_tight.txt
+
+celfmt -i tab.cel
+! stderr .
+cmp stdout want_tab.txt
+
+# The comment is kept when the condition spans several lines, and still
+# there when the result is formatted again.
+celfmt -i multi.cel
+! stderr .
+cmp stdout want_multi.txt
+
+celfmt -i want_multi.txt
+! stderr .
+stdout '\? // c4'
+
+-- space.cel --
+state.a ? // c1
+	state.b
+:
+	state.d
+-- want_space.txt --
+state.a ? // c1
+	state.b
+:
+	state.d
+-- tight.cel --
+state.a ?// c2
+	state.b
+:
+	state.d
+-- want_tight.txt --
+state.a ? // c2
+	state.b
+:
+	state.d
+-- tab.cel --
+state.a ?	//c3
+	state.b
+:
+	state.d
+-- want_tab.txt --
+state.a ? // c3
+	state.b
+:
+	state.d
+-- multi.cel --
+(state.a &&
+	state.e) ? // c4
+	state.b
+:
+	state.d
+-- want_multi.txt --
+(
+	state.a && state.e
+) ? // c4
+	state.b
+:
+	state.d

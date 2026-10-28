@@ -1,0 +1,57 @@
+# A comment after an opening brace or bracket is kept.
+celfmt -i map.cel
+! stderr .
+cmp stdout want_map.txt
+
+celfmt -i want_map.txt
+! stderr .
+cmp stdout want_map.txt
+
+celfmt -i list.cel
+! stderr .
+cmp stdout want_list.txt
+
+celfmt -i want_list.txt
+! stderr .
+cmp stdout want_list.txt
+
+# The formatter puts a map that is a macro argument on its own line, so the
+# comment follows the preceding comma.
+celfmt -i arg.cel
+! stderr .
+cmp stdout want_arg.txt
+
+celfmt -i want_arg.txt
+! stderr .
+cmp stdout want_arg.txt
+
+-- map.cel --
+{ // c1
+	"a": state.a, // c2
+	"b": state.b, // c3
+}
+-- want_map.txt --
+{ // c1
+	"a": state.a, // c2
+	"b": state.b, // c3
+}
+-- list.cel --
+[ // c4
+	state.a, // c5
+	state.b // c6
+]
+-- want_list.txt --
+[ // c4
+	state.a, // c5
+	state.b, // c6
+]
+-- arg.cel --
+state.x.as(y, { // c7
+	"a": y,
+})
+-- want_arg.txt --
+state.x.as(y, // c7
+	{
+		"a": y,
+	}
+)

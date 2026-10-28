@@ -1,0 +1,21 @@
+celfmt -i src.cel -o out1.cel
+! stderr .
+cmp out1.cel want.txt
+
+# Verify idempotency.
+celfmt -i out1.cel -o out2.cel
+! stderr .
+cmp out1.cel out2.cel
+
+-- src.cel --
+state.with(
+	// Comment before a parenthesised receiver.
+	(
+		state.x
+	).as(y, {"a": y})
+)
+-- want.txt --
+state.with(
+	// Comment before a parenthesised receiver.
+	state.x.as(y, {"a": y})
+)

@@ -44,6 +44,13 @@ func TestSimplify(t *testing.T) {
 		{name: "as_nested_both_single", in: `a.as(x, b.as(y, x + y))`, want: `a + b`},
 		{name: "as_nested_inner_multi", in: `a.as(x, b.as(y, y + y + x))`, want: `b.as(y, y + y + a)`},
 		{name: "as_chain", in: `x.as(v, v.size())`, want: `x.size()`},
+		// The initial value uses the name that is bound.
+		{name: "as_self_reference", in: `x.size().as(x, x + 1)`, want: `x.size() + 1`},
+		{name: "as_rebound_unused_outer", in: `x.c.as(c, x.drop("c").as(x, x.map(k, k)))`, want: `x.drop("c").map(k, k)`},
+		{name: "as_rebound_used_outer", in: `x.c.as(c, x.drop("c").as(x, c.map(k, k)))`, want: `x.c.map(k, k)`},
+		// An inlined .as() in a branch of a conditional in an .as() that stays.
+		{name: "as_in_conditional_branch", in: `x.as(r, r.b ? r.c.as(v, {"k": v.d}) : {})`, want: `x.as(r, r.b ? {"k": r.c.d} : {})`},
+		{name: "as_in_conditional_branch_filter_map", in: `x.as(r, r.b ? r.i.filter(v, v > 0).map(v, v * 2).as(q, {"k": q}) : r.i)`, want: `x.as(r, r.b ? {"k": r.i.map(v, v > 0, v * 2)} : r.i)`},
 
 		// Boolean comparison elimination
 		{name: "eq_true", in: `x == true`, want: `x`},
@@ -62,6 +69,13 @@ func TestSimplify(t *testing.T) {
 		{name: "has_ternary_no_match_op", in: `has(x.f) ? x.f + 1 : 0`, want: `has(x.f) ? (x.f + 1) : 0`},
 		{name: "has_ternary_no_match_field", in: `has(x.f) ? x.g : 0`, want: `has(x.f) ? x.g : 0`},
 		{name: "has_ternary_no_match_operand", in: `has(x.f) ? y.f : 0`, want: `has(x.f) ? y.f : 0`},
+		// has ternary in the arguments of a macro call
+		{name: "has_ternary_in_macro_arg", in: `x.map(e, has(e.f) ? e.f : "d")`, want: `x.map(e, e.?f.orValue("d"))`},
+		{name: "has_ternary_negated_in_macro_arg", in: `x.map(e, !has(e.f) ? "d" : e.f)`, want: `x.map(e, e.?f.orValue("d"))`},
+		{name: "has_ternary_nested_macro_arg", in: `x.map(e, has(e.f.g) ? e.f.g : e.h.map(k, has(k.z) ? k.z : 0))`, want: `x.map(e, e.f.?g.orValue(e.h.map(k, k.?z.orValue(0))))`},
+		{name: "has_ternary_no_match_in_macro_arg", in: `x.map(e, has(e.f) ? e.g : "d")`, want: `x.map(e, has(e.f) ? e.g : "d")`},
+		{name: "has_ternary_in_as", in: `x.as(r, has(r.f) ? r.f : r.g)`, want: `x.as(r, r.?f.orValue(r.g))`},
+		{name: "has_ternary_in_inlined_macro", in: `x.map(e, has(e.f) ? e.f : "d").as(q, {"k": q})`, want: `{"k": x.map(e, e.?f.orValue("d"))}`},
 		{
 			name: "has_ternary_comment_on_access",
 			in:   "has(x.f) ?\n\t// keep this\n\tx.f\n:\n\t0",
@@ -98,6 +112,68 @@ func TestSimplify(t *testing.T) {
 			got := buf.String()
 			if got != tt.want {
 				t.Errorf("Simplify(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestSimplifyDeterministic checks that the output does not depend on the
+// order in which the macro calls are visited, which is not specified.
+func TestSimplifyDeterministic(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+	}{
+		{
+			// Inlining the first .as() leaves its macro call registered
+			// under both the original and the substituted ID, and the
+			// formatter must choose between them in a fixed way.
+			name: "macro_call_ids",
+			in: "x.?cursor.next_link.orValue(\"\").as(next_link,\n" +
+				"\t(next_link != \"\") ?\n" +
+				"\t\tnext_link\n" +
+				"\t:\n" +
+				"\t\t\"z\"\n" +
+				").as(out,\n" +
+				"\ty.as(w,\n" +
+				"\t\tw + out\n" +
+				"\t)\n" +
+				")",
+		},
+		{
+			// Inlining c first would put the outer x into the scope
+			// of the inner x.
+			name: "rebound_name",
+			in:   `x.c.as(c, x.drop("c").as(x, c.map(k, {"m": x.with({"k": k})})))`,
+		},
+	}
+
+	env := newTestEnv(t)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			format := func() string {
+				compiled, iss := env.Compile(tt.in)
+				if iss != nil {
+					t.Fatalf("Compile(%q): %v", tt.in, iss)
+				}
+				native := compiled.NativeRep()
+				src := common.NewTextSource(tt.in)
+				Simplify(native, src)
+				var buf strings.Builder
+				err := Format(&buf, native, src, Pretty())
+				if err != nil {
+					t.Fatalf("Format() after Simplify(%q): %v", tt.in, err)
+				}
+				return buf.String()
+			}
+
+			// The unordered iteration differed about one time in eight.
+			want := format()
+			for i := 0; i < 500; i++ {
+				got := format()
+				if got != want {
+					t.Fatalf("Simplify(%q) is not deterministic:\nfirst: %q\nrun %d: %q", tt.in, want, i+1, got)
+				}
 			}
 		})
 	}

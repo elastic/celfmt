@@ -1,0 +1,42 @@
+# A blank line above an opening parenthesis is dropped, unless there is a
+# comment above it.
+celfmt -i nocomment.cel
+! stderr .
+cmp stdout want_nocomment.txt
+
+celfmt -i comment.cel
+! stderr .
+cmp stdout want_comment.txt
+
+# Verify idempotency.
+celfmt -i want_comment.txt
+! stderr .
+cmp stdout want_comment.txt
+
+-- nocomment.cel --
+state.with(
+
+	(
+		state.x
+	).as(y, {"a": y})
+)
+-- want_nocomment.txt --
+state.with(
+	state.x.as(y, {"a": y})
+)
+-- comment.cel --
+state.with(
+
+	// c
+
+	(
+		state.x
+	).as(y, {"a": y})
+)
+-- want_comment.txt --
+state.with(
+
+	// c
+
+	state.x.as(y, {"a": y})
+)

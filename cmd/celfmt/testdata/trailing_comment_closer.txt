@@ -1,0 +1,82 @@
+# A comment after closing brackets that are on a line of their own is kept.
+# It is written after the last element or argument in the brackets, which is
+# not where it was. That is a compromise, since the AST does not say where
+# closing brackets are; the want files show the current output, not the
+# intended one. See closerComment in format.go.
+celfmt -i call.cel
+! stderr .
+cmp stdout want_call.txt
+
+celfmt -i nested.cel
+! stderr .
+cmp stdout nested.cel
+
+celfmt -i map.cel
+! stderr .
+cmp stdout want_map.txt
+
+# Lines of closing brackets without a comment are passed over.
+celfmt -i stacked.cel
+! stderr .
+cmp stdout want_stacked.txt
+
+# The comment is kept when the result is formatted again.
+celfmt -i want_branch.txt
+! stderr .
+stdout '\) // c5'
+
+celfmt -i branch.cel
+! stderr .
+cmp stdout want_branch.txt
+
+-- call.cel --
+size(
+	state.x
+) // c1
+-- want_call.txt --
+size(
+	state.x // c1
+)
+-- nested.cel --
+state.x.as(y,
+	y.z.as(w,
+		w + 1 // c2
+	) // c3
+)
+-- map.cel --
+{
+	"a": {
+		"b": 1,
+	}, // c4
+}
+-- want_map.txt --
+{
+	"a": {
+		"b": 1, // c4
+	},
+}
+-- branch.cel --
+state.a ?
+	(state.b &&
+	state.e) // c5
+:
+	state.d
+-- want_branch.txt --
+state.a ?
+	(
+		state.b && state.e
+	) // c5
+:
+	state.d
+-- stacked.cel --
+state.x.with(
+	state.y.with(
+		state.z
+	)
+) // c6
+-- want_stacked.txt --
+state.x.with(
+	state.y.with(
+		state.z // c6
+	)
+)
