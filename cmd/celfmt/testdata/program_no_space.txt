@@ -1,0 +1,8 @@
+celfmt -agent -i src.cel
+! stderr .
+cmp stdout src.cel
+
+-- src.cel --
+interval: {{interval}}
+program:|
+  1+1

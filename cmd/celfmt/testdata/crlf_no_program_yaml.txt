@@ -1,0 +1,13 @@
+# Output always has Unix line endings, even if there is no program.
+celfmt -agent -i src.cel
+! stderr .
+cmp stdout want.txt
+
+-- src.cel --
+interval: {{interval}}
+tags:
+  - a
+-- want.txt --
+interval: {{interval}}
+tags:
+  - a

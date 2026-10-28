@@ -1,0 +1,83 @@
+# A top level run_as_cel: true, with an optional comment, is detected.
+celfmt -agent -i true.cel
+! stderr .
+cmp stdout want_true.txt
+
+celfmt -agent -i comment.cel
+! stderr .
+cmp stdout want_comment.txt
+
+# Anything else is not detected, so cel.program is left unchanged.
+celfmt -agent -i title.cel
+! stderr .
+cmp stdout title.cel
+
+celfmt -agent -i upper.cel
+! stderr .
+cmp stdout upper.cel
+
+celfmt -agent -i key.cel
+! stderr .
+cmp stdout key.cel
+
+celfmt -agent -i quoted.cel
+! stderr .
+cmp stdout quoted.cel
+
+celfmt -agent -i templated.cel
+! stderr .
+cmp stdout templated.cel
+
+celfmt -agent -i nested.cel
+! stderr .
+cmp stdout nested.cel
+
+celfmt -agent -i commented.cel
+! stderr .
+cmp stdout commented.cel
+
+-- true.cel --
+run_as_cel: true
+cel.program: |
+  1+1
+-- want_true.txt --
+run_as_cel: true
+cel.program: |-
+  1 + 1
+-- comment.cel --
+run_as_cel: true # Run as CEL.
+cel.program: |
+  1+1
+-- want_comment.txt --
+run_as_cel: true # Run as CEL.
+cel.program: |-
+  1 + 1
+-- title.cel --
+run_as_cel: True
+cel.program: |
+  1+1
+-- upper.cel --
+run_as_cel: TRUE
+cel.program: |
+  1+1
+-- key.cel --
+RUN_AS_CEL: true
+cel.program: |
+  1+1
+-- quoted.cel --
+run_as_cel: "true"
+cel.program: |
+  1+1
+-- templated.cel --
+run_as_cel: {{run_as_cel}}
+cel.program: |
+  1+1
+-- nested.cel --
+other:
+  run_as_cel: true
+cel.program: |
+  1+1
+-- commented.cel --
+# run_as_cel: true
+cel.program: |
+  1+1

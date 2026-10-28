@@ -1,0 +1,14 @@
+celfmt -agent -i src.cel
+! stderr .
+cmp stdout want.txt
+
+-- src.cel --
+program: |
+  1+1
+# trailing
+tags: [a]
+-- want.txt --
+program: |-
+  1 + 1
+# trailing
+tags: [a]

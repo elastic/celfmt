@@ -1,0 +1,36 @@
+celfmt -agent -i src.cel
+! stderr .
+cmp stdout want.txt
+
+-- src.cel --
+interval: {{interval}}
+run_as_cel: true
+cel:
+  state:
+    api_token: {{api_token}}
+{{#if first_interval}}
+    lookback: {{first_interval}}
+{{/if}}
+  # The program.
+  program: |
+    state.with({"events":[],"want_more":false})
+  redact:
+    fields: ~
+tags:
+  - run_as_cel
+-- want.txt --
+interval: {{interval}}
+run_as_cel: true
+cel:
+  state:
+    api_token: {{api_token}}
+{{#if first_interval}}
+    lookback: {{first_interval}}
+{{/if}}
+  # The program.
+  program: |-
+    state.with({"events": [], "want_more": false})
+  redact:
+    fields: ~
+tags:
+  - run_as_cel

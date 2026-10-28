@@ -1,0 +1,11 @@
+celfmt -agent -i src.cel
+! stderr .
+cmp stdout src.cel
+
+-- src.cel --
+run_as_cel: true
+interval: {{interval}}
+other:
+  cel:
+    program: |
+      state.with({"events":[],"want_more":false})
