@@ -322,8 +322,16 @@ func celFmtYAML(blk programBlock, indent string, simplify, extract bool) (string
 	// We should be able to do this properly, but there is no
 	// non-buggy YAML library that will not double-quote some
 	// programs.
-	pad := strings.Repeat(" ", blk.col)
-	return pad + blk.key + ": |-\n" + pad + "  " + strings.ReplaceAll(buf.String(), "\n", "\n"+pad+"  ") + "\n", nil
+	pad := strings.Repeat(" ", blk.col) + "  "
+	lines := strings.Split(buf.String(), "\n")
+	for i, l := range lines {
+		// Leave blank lines empty so that they do not end up
+		// holding only the indentation.
+		if l != "" {
+			lines[i] = pad + l
+		}
+	}
+	return strings.Repeat(" ", blk.col) + blk.key + ": |-\n" + strings.Join(lines, "\n") + "\n", nil
 }
 
 type warn struct{ error }
