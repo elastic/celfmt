@@ -890,6 +890,51 @@ func (un *formatter) visitSelectInternal(operand ast.Expr, testOnly bool, op, fi
 	return nil
 }
 
+// writeEntryComments writes the comments above the key, if there is one, and
+// the comments above the value of an entry of a map or message, before the
+// key. A comment above the value would otherwise be written after the colon,
+// where it is not found when the output is formatted again. The comments of a
+// value are those above the first token of its expression, so they are looked
+// for on the expressions that start it.
+func (un *formatter) writeEntryComments(key, value ast.Expr) {
+	exprs := []ast.Expr{}
+	if key != nil {
+		exprs = append(exprs, key)
+	}
+	for e := value; e != nil; e = un.firstChild(e) {
+		exprs = append(exprs, e)
+	}
+	for _, e := range exprs {
+		for _, c := range un.CommentBlock(e.ID()) {
+			un.WriteString(c)
+			un.WriteNewLine()
+		}
+	}
+}
+
+// firstChild returns the expression that is written first in expr, which is
+// the target of a member call, the operand of a selection or the first operand
+// of an operator, or nil if the expression starts with a token of its own.
+func (un *formatter) firstChild(expr ast.Expr) ast.Expr {
+	call, ok := un.info.GetMacroCall(expr.ID())
+	if ok {
+		return un.firstChild(call)
+	}
+	switch expr.Kind() {
+	case ast.CallKind:
+		c := expr.AsCall()
+		if c.IsMemberFunction() {
+			return c.Target()
+		}
+		if strings.HasPrefix(c.FunctionName(), "_") && len(c.Args()) > 0 {
+			return c.Args()[0]
+		}
+	case ast.SelectKind:
+		return expr.AsSelect().Operand()
+	}
+	return nil
+}
+
 func (un *formatter) visitStructMsg(expr ast.Expr) error {
 	m := expr.AsStruct()
 	fields := m.Fields()
@@ -903,11 +948,8 @@ func (un *formatter) visitStructMsg(expr ast.Expr) error {
 			f := field.Name()
 			v := field.Value()
 			un.WriteNewLine()
+			un.writeEntryComments(nil, v)
 			if field.IsOptional() {
-				for _, c := range un.CommentBlock(v.ID()) {
-					un.WriteString(c)
-					un.WriteNewLine()
-				}
 				un.WriteString("?")
 			}
 			un.WriteString(f)
@@ -958,6 +1000,7 @@ func (un *formatter) visitStructMap(expr ast.Expr) error {
 			entry := e.AsMapEntry()
 			k := entry.Key()
 			un.WriteNewLine()
+			un.writeEntryComments(k, entry.Value())
 			if entry.IsOptional() {
 				for _, c := range un.CommentBlock(e.ID()) {
 					un.WriteString(c)

@@ -1,0 +1,60 @@
+# A comment above the value of a map entry is written above the key, since
+# a comment after the colon is not found when the output is formatted again.
+celfmt -i value.cel -o out1.cel
+! stderr .
+cmp out1.cel want_value.txt
+
+celfmt -i out1.cel -o out2.cel
+! stderr .
+cmp out1.cel out2.cel
+
+# The same for a comment that -s moves into a map by inlining a variable.
+celfmt -s -i inlined.cel -o out3.cel
+! stderr .
+cmp out3.cel want_inlined.txt
+
+celfmt -s -i out3.cel -o out4.cel
+! stderr .
+cmp out3.cel out4.cel
+
+# Comments above the key stay above it, before comments above the value.
+celfmt -i both.cel
+! stderr .
+cmp stdout want_both.txt
+
+-- value.cel --
+{
+	"a":
+		// c
+		state.x,
+	"b": state.y,
+}
+-- want_value.txt --
+{
+	// c
+	"a": state.x,
+	"b": state.y,
+}
+-- inlined.cel --
+// top
+(
+	state.x
+).as(y, {"a": y})
+-- want_inlined.txt --
+{
+	// top
+	"a": state.x,
+}
+-- both.cel --
+{
+	// key
+	"a":
+		// value
+		state.x,
+}
+-- want_both.txt --
+{
+	// key
+	// value
+	"a": state.x,
+}
