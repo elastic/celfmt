@@ -44,6 +44,8 @@ func TestSimplify(t *testing.T) {
 		{name: "as_nested_both_single", in: `a.as(x, b.as(y, x + y))`, want: `a + b`},
 		{name: "as_nested_inner_multi", in: `a.as(x, b.as(y, y + y + x))`, want: `b.as(y, y + y + a)`},
 		{name: "as_chain", in: `x.as(v, v.size())`, want: `x.size()`},
+		{name: "as_inner_inlined_outer_multi_use", in: `a.as(v, (v + v).as(w, w + 1))`, want: `a.as(v, v + v + 1)`},
+		{name: "as_init_filter_map", in: `x.filter(v, v > 0).map(v, v * 2).as(w, w)`, want: `x.map(v, v > 0, v * 2)`},
 
 		// Boolean comparison elimination
 		{name: "eq_true", in: `x == true`, want: `x`},
@@ -57,6 +59,8 @@ func TestSimplify(t *testing.T) {
 
 		// has(x.f) ? x.f : d → x.?f.orValue(d)
 		{name: "has_ternary", in: `has(x.f) ? x.f : "default"`, want: `x.?f.orValue("default")`},
+		{name: "has_ternary_in_as_init", in: `(has(x.f) ? x.f : 0).as(v, v + v)`, want: `(has(x.f) ? x.f : 0).as(v, v + v)`},
+		{name: "has_ternary_in_map_body", in: `x.map(v, has(v.f) ? v.f : 0)`, want: `x.map(v, has(v.f) ? v.f : 0)`},
 		{name: "has_ternary_deep", in: `has(x.f.g) ? x.f.g : 0`, want: `x.f.?g.orValue(0)`},
 		{name: "has_ternary_negated", in: `!has(x.f) ? "default" : x.f`, want: `x.?f.orValue("default")`},
 		{name: "has_ternary_no_match_op", in: `has(x.f) ? x.f + 1 : 0`, want: `has(x.f) ? (x.f + 1) : 0`},
