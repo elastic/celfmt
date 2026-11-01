@@ -1,0 +1,26 @@
+# A blank line in a program is written as an empty line, not as a line that
+# holds only the indentation of the program.
+celfmt -agent -i src.cel
+! stderr .
+cmp stdout want.txt
+
+celfmt -agent -i want.txt
+! stderr .
+cmp stdout want.txt
+
+-- src.cel --
+interval: {{interval}}
+program: |-
+  // c1
+
+  state.with({"events":[],"want_more":false})
+tags:
+  - forwarded
+-- want.txt --
+interval: {{interval}}
+program: |-
+  // c1
+
+  state.with({"events": [], "want_more": false})
+tags:
+  - forwarded
