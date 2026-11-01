@@ -107,6 +107,85 @@ func TestSimplify(t *testing.T) {
 	}
 }
 
+// simplifyOnce compiles in, simplifies it and returns it formatted.
+func simplifyOnce(t *testing.T, env *cel.Env, in string) string {
+	t.Helper()
+	compiled, iss := env.Compile(in)
+	if iss != nil {
+		t.Fatalf("Compile(%q): %v", in, iss)
+	}
+	native := compiled.NativeRep()
+	src := common.NewTextSource(in)
+	Simplify(native, src)
+	var buf strings.Builder
+	err := Format(&buf, native, src, Pretty())
+	if err != nil {
+		t.Fatalf("Format() after Simplify(%q): %v", in, err)
+	}
+	return buf.String()
+}
+
+// TestSimplifyRepeated checks results that depend on the order in which the
+// macro calls are visited, which the map of them does not fix, by running
+// each case many times.
+func TestSimplifyRepeated(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		// The macro call of the filter is registered under two IDs once
+		// the .as() has been inlined, and both have to be folded.
+		{name: "as_init_filter_map", in: `x.filter(v, v > 0).map(v, v * 2).as(w, w)`, want: `x.map(v, v > 0, v * 2)`},
+	}
+
+	env := newTestEnv(t)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			for i := 0; i < 500; i++ {
+				got := simplifyOnce(t, env, tt.in)
+				if got != tt.want {
+					t.Fatalf("Simplify(%q), run %d = %q, want %q", tt.in, i+1, got, tt.want)
+				}
+			}
+		})
+	}
+}
+
+// TestSimplifyLayout checks that the layout of a macro call that Simplify
+// inlines the initial value of is that of the source, and does not depend on
+// the order in which the map of macro calls is iterated.
+func TestSimplifyLayout(t *testing.T) {
+	// Inlining the first .as() leaves its macro call registered under both
+	// the original and the substituted ID. The substituted ID is on a later
+	// line, so using it would put the first argument on a line of its own.
+	const in = "x.?cursor.next_link.orValue(\"\").as(next_link,\n" +
+		"\t(next_link != \"\") ?\n" +
+		"\t\tnext_link\n" +
+		"\t:\n" +
+		"\t\t\"z\"\n" +
+		").as(out,\n" +
+		"\ty.as(w,\n" +
+		"\t\tw + out\n" +
+		"\t)\n" +
+		")"
+	const want = "y + x.?cursor.next_link.orValue(\"\").as(next_link,\n" +
+		"\t(next_link != \"\") ?\n" +
+		"\t\tnext_link\n" +
+		"\t:\n" +
+		"\t\t\"z\"\n" +
+		")"
+
+	env := newTestEnv(t)
+	// The unordered iteration chose differently about one time in eight.
+	for i := 0; i < 500; i++ {
+		got := simplifyOnce(t, env, in)
+		if got != want {
+			t.Fatalf("Simplify(%q), run %d:\n got: %q\nwant: %q", in, i+1, got, want)
+		}
+	}
+}
+
 func newTestEnv(t *testing.T) *cel.Env {
 	t.Helper()
 	env, err := cel.NewEnv(
