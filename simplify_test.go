@@ -44,6 +44,9 @@ func TestSimplify(t *testing.T) {
 		{name: "as_nested_both_single", in: `a.as(x, b.as(y, x + y))`, want: `a + b`},
 		{name: "as_nested_inner_multi", in: `a.as(x, b.as(y, y + y + x))`, want: `b.as(y, y + y + a)`},
 		{name: "as_chain", in: `x.as(v, v.size())`, want: `x.size()`},
+		// An inlined .as() in a branch of a conditional in an .as() that stays.
+		{name: "as_in_conditional_branch", in: `x.as(r, r.b ? r.c.as(v, {"k": v.d}) : {})`, want: `x.as(r, r.b ? {"k": r.c.d} : {})`},
+		{name: "as_in_conditional_branch_filter_map", in: `x.as(r, r.b ? r.i.filter(v, v > 0).map(v, v * 2).as(q, {"k": q}) : r.i)`, want: `x.as(r, r.b ? {"k": r.i.map(v, v > 0, v * 2)} : r.i)`},
 		{name: "as_inner_inlined_outer_multi_use", in: `a.as(v, (v + v).as(w, w + 1))`, want: `a.as(v, v + v + 1)`},
 		{name: "as_init_filter_map", in: `x.filter(v, v > 0).map(v, v * 2).as(w, w)`, want: `x.map(v, v > 0, v * 2)`},
 		// The initial value uses the name that is bound.
