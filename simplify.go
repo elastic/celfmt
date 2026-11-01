@@ -18,6 +18,7 @@
 package celfmt
 
 import (
+	"slices"
 	"strings"
 
 	"cel.dev/cel-go/common"
@@ -78,10 +79,15 @@ func inlineAs(a *ast.AST) {
 			if n == 1 {
 				substituteIdent(result, name, init, info)
 			}
-			// The init expression is no longer in the tree, so drop its
-			// macro call entry. substituteIdent has already copied it to
-			// the use site if there was one.
-			info.ClearMacroCall(init.ID())
+			// If the init expression was not substituted anywhere it is no
+			// longer in the tree, so drop its macro call entry. If it was,
+			// substituteIdent has copied the macro call to the use site,
+			// and the entry for the original stays, so that the formatter
+			// finds the original, which is next to the arguments and has
+			// the layout of the source.
+			if n == 0 {
+				info.ClearMacroCall(init.ID())
+			}
 
 			// Clear the outer .as() macro entry before any remap so we
 			// don't clobber a remapped inner entry that lands on the
@@ -465,7 +471,19 @@ func foldFilter(a *ast.AST) {
 			}
 			newArgs := []ast.Expr{iterVar, filterCond, args[1]}
 			newMCall := fac.NewMemberCall(0, fn, filterTarget, newArgs...)
-			info.SetMacroCall(id, newMCall)
+			// Inlining an .as() copies the macro call of the init
+			// expression to the ID of the place where the variable was
+			// used, so the same macro call can be registered under more
+			// than one ID. Rewrite all of them.
+			ids := []int64{id}
+			for other, mc := range info.MacroCalls() {
+				if other != id && mc == call {
+					ids = append(ids, other)
+				}
+			}
+			for _, other := range ids {
+				info.SetMacroCall(other, newMCall)
+			}
 			info.ClearMacroCall(target.ID())
 
 			// Update the AST: skip the filter comprehension so the
@@ -474,7 +492,7 @@ func foldFilter(a *ast.AST) {
 			// stays at its original ID — the new macro tree references
 			// it there via an unspecified-expr placeholder.
 			ast.PreOrderVisit(a.Expr(), ast.NewExprVisitor(func(e ast.Expr) {
-				if e.ID() != id || e.Kind() != ast.ComprehensionKind {
+				if !slices.Contains(ids, e.ID()) || e.Kind() != ast.ComprehensionKind {
 					return
 				}
 				iterRange := e.AsComprehension().IterRange()
