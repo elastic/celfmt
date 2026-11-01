@@ -248,7 +248,9 @@ func asBool(e ast.Expr) (bool, bool) {
 // elimHasTernary rewrites has(x.f) ? x.f : d → x.?f.orValue(d)
 // and !has(x.f) ? d : x.f → x.?f.orValue(d). The rewrite is skipped
 // when the field-access branch has preceding comments, since the
-// simplified form has no position to attach them. It is also skipped when
+// simplified form has no position to attach them, and when there is a
+// comment after the question mark, at the end of the true branch or after
+// the colon. It is also skipped when
 // the has() test appears in any macro call expression, such as the body of
 // a map, filter or as call. The formatter prints the macro call's own copy
 // of the ternary, which still needs the has() macro call, so rewriting the
@@ -275,7 +277,7 @@ func elimHasTernary(a *ast.AST, src common.Source) {
 		if hasSel == nil {
 			return
 		}
-		if hasComment(src, info, access.ID()) || inMacro[hasSel.ID()] {
+		if hasComment(src, info, access.ID()) || hasCommentInside(src, info, hasSel, args[2]) || inMacro[hasSel.ID()] {
 			return
 		}
 
@@ -299,6 +301,27 @@ func macroNodeIDs(info *ast.SourceInfo) map[int64]bool {
 		}))
 	}
 	return ids
+}
+
+// hasCommentInside reports whether there is a comment after code on the
+// lines of a conditional from the one where its condition starts to the one
+// before the one where its false branch starts. Those are the comments after
+// the question mark, at the end of the true branch, and after the colon. The
+// simplified form has no position to attach them. Comments on lines of their
+// own are above the access or the false branch, and are not lost.
+func hasCommentInside(src common.Source, info *ast.SourceInfo, cond, els ast.Expr) bool {
+	from := info.GetStartLocation(cond.ID()).Line()
+	to := info.GetStartLocation(els.ID()).Line()
+	for line := from; line < to; line++ {
+		text, ok := src.Snippet(line)
+		if !ok {
+			return false
+		}
+		if !strings.HasPrefix(strings.TrimSpace(text), "//") && commentIndex(text) >= 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // hasComment reports whether there are comment lines immediately preceding
