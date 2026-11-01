@@ -1,0 +1,80 @@
+# A conditional with a comment after the question mark, at the end of the
+# true branch or after the colon is not rewritten with -s, since the
+# rewritten form has no position for the comment. It is written as it is
+# without -s.
+celfmt -i question.cel
+! stderr .
+cp stdout want_question.txt
+celfmt -s -i question.cel
+! stderr .
+cmp stdout want_question.txt
+stdout '// why'
+
+celfmt -i access.cel
+! stderr .
+cp stdout want_access.txt
+celfmt -s -i access.cel
+! stderr .
+cmp stdout want_access.txt
+stdout '// why'
+
+celfmt -i colon.cel
+! stderr .
+cp stdout want_colon.txt
+celfmt -s -i colon.cel
+! stderr .
+cmp stdout want_colon.txt
+stdout '// why'
+
+# The same holds for the negated form, where the false branch is the access.
+celfmt -i negated.cel
+! stderr .
+cp stdout want_negated.txt
+celfmt -s -i negated.cel
+! stderr .
+cmp stdout want_negated.txt
+stdout '// why'
+
+celfmt -i negated_question.cel
+! stderr .
+cp stdout want_negated_question.txt
+celfmt -s -i negated_question.cel
+! stderr .
+cmp stdout want_negated_question.txt
+stdout '// why'
+
+# Without a comment it is rewritten.
+celfmt -s -i plain.cel
+! stderr .
+stdout 'state.x.\?f.orValue'
+
+-- question.cel --
+has(state.x.f) ? // why
+	state.x.f
+:
+	"default"
+-- access.cel --
+has(state.x.f) ?
+	state.x.f // why
+:
+	"default"
+-- colon.cel --
+has(state.x.f) ?
+	state.x.f
+: // why
+	"default"
+-- plain.cel --
+has(state.x.f) ?
+	state.x.f
+:
+	"default"
+-- negated.cel --
+!has(state.x.f) ?
+	"default"
+: // why
+	state.x.f
+-- negated_question.cel --
+!has(state.x.f) ? // why
+	"default"
+:
+	state.x.f
