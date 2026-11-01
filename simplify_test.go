@@ -18,6 +18,8 @@
 package celfmt
 
 import (
+	"net/http"
+	"sort"
 	"strings"
 	"testing"
 
@@ -53,6 +55,14 @@ func TestSimplify(t *testing.T) {
 		{name: "as_self_reference", in: `x.size().as(x, x + 1)`, want: `x.size() + 1`},
 		{name: "as_rebound_unused_outer", in: `x.c.as(c, x.drop("c").as(x, x.map(k, k)))`, want: `x.drop("c").map(k, k)`},
 		{name: "as_rebound_used_outer", in: `x.c.as(c, x.drop("c").as(x, c.map(k, k)))`, want: `x.c.map(k, k)`},
+
+		// The initial value calls a function that is not pure.
+		{name: "as_impure_zero_use", in: `get("http://example.com/x").as(r, {"a": 1})`, want: `get("http://example.com/x").as(r, {"a": 1})`},
+		{name: "as_impure_single_use", in: `now().as(t, {"a": t})`, want: `now().as(t, {"a": t})`},
+		{name: "as_impure_in_init", in: `x.map(v, get(v)).as(r, r.size())`, want: `x.map(v, get(v)).as(r, r.size())`},
+		{name: "as_impure_uuid", in: `uuid().as(u, {"a": u})`, want: `uuid().as(u, {"a": u})`},
+		{name: "as_impure_in_result", in: `x.as(r, {"a": r, "t": now()})`, want: `{"a": x, "t": now()}`},
+		{name: "as_impure_inner_kept_outer_inlined", in: `x.as(r, now().as(t, [r, t]))`, want: `now().as(t, [x, t])`},
 
 		// Boolean comparison elimination
 		{name: "eq_true", in: `x == true`, want: `x`},
@@ -215,6 +225,9 @@ func newTestEnv(t *testing.T) *cel.Env {
 			decls.NewVariable("b", types.DynType),
 		),
 		lib.Collections(),
+		lib.HTTP(nil, nil, nil),
+		lib.Time(),
+		lib.Crypto(),
 		cel.OptionalTypes(cel.OptionalTypesVersion(lib.OptionalTypesVersion)),
 		ext.TwoVarComprehensions(ext.TwoVarComprehensionsVersion(lib.OptionalTypesVersion)),
 		cel.EnableMacroCallTracking(),
@@ -223,4 +236,152 @@ func newTestEnv(t *testing.T) *cel.Env {
 		t.Fatalf("cel.NewEnv: %v", err)
 	}
 	return env
+}
+
+// pure is the set of the functions of the mito library that are known to be
+// pure, which is every function that is not in impure.
+var pure = map[string]bool{
+	"base64":                            true,
+	"base64_decode":                     true,
+	"base64_raw":                        true,
+	"base64_raw_decode":                 true,
+	"basic_authentication":              true,
+	"canonical_mime_header_key":         true,
+	"collate":                           true,
+	"compare":                           true,
+	"contains_any":                      true,
+	"contains_substr":                   true,
+	"count":                             true,
+	"decode_json":                       true,
+	"decode_json_stream":                true,
+	"decode_json_stream_string_numbers": true,
+	"decode_json_string_numbers":        true,
+	"decode_xml":                        true,
+	"drop":                              true,
+	"drop_empty":                        true,
+	"encode_json":                       true,
+	"equal_fold":                        true,
+	"fields":                            true,
+	"flatten":                           true,
+	"format":                            true,
+	"format_query":                      true,
+	"format_url":                        true,
+	"front":                             true,
+	"get_request":                       true,
+	"has_prefix":                        true,
+	"has_suffix":                        true,
+	"hex":                               true,
+	"hex_decode":                        true,
+	"hmac":                              true,
+	"index":                             true,
+	"index_any":                         true,
+	"is_error":                          true,
+	"join":                              true,
+	"keys":                              true,
+	"last_index":                        true,
+	"last_index_any":                    true,
+	"max":                               true,
+	"md5":                               true,
+	"mime":                              true,
+	"min":                               true,
+	"parse_query":                       true,
+	"parse_time":                        true,
+	"parse_url":                         true,
+	"post_request":                      true,
+	"re_find":                           true,
+	"re_find_all":                       true,
+	"re_find_all_submatch":              true,
+	"re_find_submatch":                  true,
+	"re_match":                          true,
+	"re_replace_all":                    true,
+	"repeat":                            true,
+	"replace":                           true,
+	"replace_all":                       true,
+	"request":                           true,
+	"round":                             true,
+	"sha1":                              true,
+	"sha256":                            true,
+	"split":                             true,
+	"split_after":                       true,
+	"split_after_n":                     true,
+	"split_n":                           true,
+	"sprintf":                           true,
+	"substring":                         true,
+	"sum":                               true,
+	"tail":                              true,
+	"to_lower":                          true,
+	"to_title":                          true,
+	"to_upper":                          true,
+	"to_valid_utf8":                     true,
+	"trim":                              true,
+	"trim_left":                         true,
+	"trim_prefix":                       true,
+	"trim_right":                        true,
+	"trim_space":                        true,
+	"trim_suffix":                       true,
+	"truncate":                          true,
+	"try":                               true,
+	"valid_utf8":                        true,
+	"values":                            true,
+	"with":                              true,
+	"with_replace":                      true,
+	"with_update":                       true,
+	"zip":                               true,
+}
+
+// TestImpureClassified checks that every function that the mito library adds
+// to the environment is in either impure or pure, so that a function that is
+// added to the library has to be classified, and that the two do not overlap
+// or name a function that is not there.
+func TestImpureClassified(t *testing.T) {
+	xml, err := lib.XML(nil, nil)
+	if err != nil {
+		t.Fatalf("lib.XML: %v", err)
+	}
+	opts := []cel.EnvOption{
+		cel.OptionalTypes(cel.OptionalTypesVersion(lib.OptionalTypesVersion)),
+		ext.TwoVarComprehensions(ext.TwoVarComprehensionsVersion(lib.OptionalTypesVersion)),
+	}
+	base, err := cel.NewEnv(opts...)
+	if err != nil {
+		t.Fatalf("cel.NewEnv: %v", err)
+	}
+	all, err := cel.NewEnv(append(opts,
+		lib.AWS(), lib.Collections(), lib.CSV(), lib.Crypto(), lib.Debug(nil), lib.Emit(nil),
+		lib.File(nil), lib.HTTP(&http.Client{}, nil, nil), lib.JSON(nil), lib.Limit(nil),
+		lib.Lines(), lib.MIME(nil), lib.Printf(), lib.Regexp(nil), lib.Send(nil), lib.Stream(),
+		lib.Strings(), lib.Time(), lib.Try(), xml,
+	)...)
+	if err != nil {
+		t.Fatalf("cel.NewEnv: %v", err)
+	}
+
+	var names []string
+	for name := range all.Functions() {
+		_, ok := base.Functions()[name]
+		if !ok {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	known := make(map[string]bool)
+	for _, name := range names {
+		known[name] = true
+		if !impure[name] && !pure[name] {
+			t.Errorf("%s is in neither impure nor pure", name)
+		}
+	}
+	for name := range impure {
+		if !known[name] {
+			t.Errorf("impure has %s, which the mito library does not declare", name)
+		}
+		if pure[name] {
+			t.Errorf("%s is in both impure and pure", name)
+		}
+	}
+	for name := range pure {
+		if !known[name] {
+			t.Errorf("pure has %s, which the mito library does not declare", name)
+		}
+	}
 }

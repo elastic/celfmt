@@ -28,7 +28,8 @@ import (
 )
 
 // Simplify applies semantics-preserving simplifications to the AST:
-//   - inline single-use .as() bindings
+//   - inline single-use .as() bindings, unless the initial value calls a
+//     function that is not pure
 //   - eliminate boolean comparisons (x == true → x, x == false → !x)
 //   - rewrite has(x.f) ? x.f : d and !has(x.f) ? d : x.f → x.?f.orValue(d)
 //   - fold filter into comprehension: x.filter(v,c).map(v,t) → x.map(v,c,t)
@@ -46,7 +47,10 @@ func Simplify(a *ast.AST, src common.Source) {
 // inlineAs finds .as() macro calls where the bound variable is used at most
 // once in the result expression, and replaces the comprehension with its
 // result (substituting the init expression for the single use). Zero-use
-// bindings are replaced with the bare result.
+// bindings are replaced with the bare result. A binding whose init
+// expression calls a function in impure is kept, since dropping the call or
+// moving it to where the variable is used changes when, how often or whether
+// it is made.
 func inlineAs(a *ast.AST) {
 	info := a.SourceInfo()
 	// Each inlining mutates the macro call map (clear, set, clear), so
@@ -77,7 +81,7 @@ func inlineAs(a *ast.AST) {
 			result := c.Result()
 
 			n := countIdent(result, name)
-			if n > 1 {
+			if n > 1 || callsImpure(init) {
 				continue
 			}
 
@@ -126,6 +130,55 @@ func inlineAs(a *ast.AST) {
 			return
 		}
 	}
+}
+
+// impure is the set of functions in the mito library that are not pure: they
+// make requests, read files or the clock, produce a different value on each
+// call, or change the state of something outside the program. CEL itself is
+// pure, so the language does not say when or how often a call is evaluated,
+// but for these functions it matters. Functions that are not in the set are
+// taken to be pure, so a function added to the library that has effects
+// should be added here.
+var impure = map[string]bool{
+	"@emit":                true,
+	"@emit_body":           true,
+	"@emit_cursor":         true,
+	"close":                true,
+	"debug":                true,
+	"dir":                  true,
+	"do_request":           true,
+	"file":                 true,
+	"get":                  true,
+	"head":                 true,
+	"now":                  true,
+	"post":                 true,
+	"rate_limit":           true,
+	"send_refval_to":       true,
+	"send_to":              true,
+	"sign_aws_from_env":    true,
+	"sign_aws_from_shared": true,
+	"sign_aws_from_static": true,
+	"uuid":                 true,
+
+	// Streams can be read once.
+	"decode_csv_stream_lazy":                 true,
+	"decode_csv_stream_lazy_no_header":       true,
+	"decode_json_stream_lazy":                true,
+	"decode_json_stream_lazy_string_numbers": true,
+	"decode_lines":                           true,
+	"stream_gzip":                            true,
+	"stream_zip":                             true,
+}
+
+// callsImpure returns whether expr calls a function in impure.
+func callsImpure(expr ast.Expr) bool {
+	var found bool
+	ast.PreOrderVisit(expr, ast.NewExprVisitor(func(e ast.Expr) {
+		if e.Kind() == ast.CallKind && impure[e.AsCall().FunctionName()] {
+			found = true
+		}
+	}))
+	return found
 }
 
 // replaceMacroPlaceholders replaces the placeholder nodes with the given ID
