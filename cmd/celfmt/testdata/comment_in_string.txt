@@ -1,0 +1,272 @@
+# A // in a string, in a raw string or in a triple-quoted string does not
+# start a comment, and a comment after such a string is still found.
+celfmt -i raw.cel
+! stderr .
+cmp stdout want_raw.txt
+
+celfmt -i escape.cel
+! stderr .
+cmp stdout want_escape.txt
+
+celfmt -i quote.cel
+! stderr .
+cmp stdout want_quote.txt
+
+celfmt -i triple.cel
+! stderr .
+cmp stdout want_triple.txt
+
+celfmt -i triple_colon.cel
+! stderr .
+cmp stdout want_triple_colon.txt
+
+celfmt -i triple_paren.cel
+! stderr .
+cmp stdout want_triple_paren.txt
+
+
+# A comment is written once when there is text that is not ASCII before it.
+celfmt -i nonascii.cel
+! stderr .
+cmp stdout want_nonascii.txt
+
+
+# A comment after the question mark is found when the condition has a call
+# that spans lines.
+celfmt -i call_cond.cel
+! stderr .
+cmp stdout want_call_cond.txt
+
+celfmt -i call_and.cel
+! stderr .
+cmp stdout want_call_and.txt
+
+celfmt -i call_arg.cel
+! stderr .
+cmp stdout want_call_arg.txt
+
+
+# A comment after a literal with text that is more than one byte for each
+# character is kept, also when it has been formatted before.
+celfmt -i multibyte.cel
+! stderr .
+cmp stdout want_multibyte.txt
+
+celfmt -i multibyte_map.cel
+! stderr .
+cmp stdout want_multibyte_map.txt
+
+celfmt -i multibyte_space.cel
+! stderr .
+cmp stdout want_multibyte_space.txt
+
+celfmt -i multibyte_mixed.cel
+! stderr .
+cmp stdout want_multibyte_mixed.txt
+
+
+
+# The comment after an opening bracket is found when there is text that is
+# not ASCII before it.
+celfmt -i open_rune.cel
+! stderr .
+cmp stdout want_open_rune.txt
+
+
+
+# The prefixes of a raw bytes literal can be in either case, a quote can
+# follow a triple quote, and a blank line in a triple-quoted string is not a
+# blank line of the program.
+celfmt -i bytes_upper.cel
+! stderr .
+cmp stdout want_bytes_upper.txt
+
+celfmt -i quad_quote.cel
+! stderr .
+cmp stdout want_quad_quote.txt
+
+celfmt -i triple_blank.cel
+! stderr .
+cmp stdout want_triple_blank.txt
+
+-- raw.cel --
+state.x.as(a, r"\" + "//x" + a
++ "y"
+)
+-- want_raw.txt --
+state.x.as(a,
+	"\\" + "//x" + a + "y"
+)
+-- escape.cel --
+state.x.as(a, "a\"" + a // real
++ "y"
+)
+-- want_escape.txt --
+state.x.as(a, // real
+	"a\"" + a + "y"
+)
+-- quote.cel --
+state.x.as(a, 'it // is' + a // real
++ "y"
+)
+-- want_quote.txt --
+state.x.as(a, // real
+	"it // is" + a + "y"
+)
+-- triple.cel --
+size(
+"""// nc
+"""
+)
+-- want_triple.txt --
+size(
+	"// nc\n"
+)
+-- triple_colon.cel --
+state.a ?
+	"""x
+: // nc
+"""
+: // real
+	"1"
+-- want_triple_colon.txt --
+state.a ?
+	"x\n: // nc\n"
+: // real
+	"1"
+-- triple_paren.cel --
+[
+"""
+) // nc
+""",
+]
+-- want_triple_paren.txt --
+[
+	"""
+) // nc
+""",
+]
+-- nonascii.cel --
+{"é": state.a, "b": [ // c
+	1,
+]}
+-- want_nonascii.txt --
+{
+	"é": state.a, // c
+	"b": [
+		1,
+	],
+}
+-- call_cond.cel --
+(state.a.contains(
+"") ? state.b : state.c) ? // c1
+state.d : state.e
+-- want_call_cond.txt --
+(state.a.contains(
+	""
+) ? state.b : state.c) ? // c1
+	state.d
+:
+	state.e
+-- call_and.cel --
+(state.a.contains(
+"") && state.c) ? // c1
+state.d : state.e
+-- want_call_and.txt --
+(state.a.contains(
+	""
+) && state.c) ? // c1
+	state.d
+:
+	state.e
+-- call_arg.cel --
+state.a.contains(
+"") ? // c1
+state.d : state.e
+-- want_call_arg.txt --
+state.a.contains(
+	""
+) ? // c1
+	state.d
+:
+	state.e
+-- multibyte.cel --
+[
+	"日本", // c
+	1,
+]
+-- want_multibyte.txt --
+[
+	"日本", // c
+	1,
+]
+-- multibyte_map.cel --
+{
+	"k": "ééé", // c
+}
+-- want_multibyte_map.txt --
+{
+	"k": "ééé", // c
+}
+-- multibyte_space.cel --
+[
+	"日本",   // c
+	1,
+]
+-- want_multibyte_space.txt --
+[
+	"日本", // c
+	1,
+]
+-- multibyte_mixed.cel --
+{
+"é": "日本", // c1
+"b": state.a + "日本", // c2
+"c": size("日本"), // c3
+"d": ["é", "ü"], // c4
+}
+-- want_multibyte_mixed.txt --
+{
+	"é": "日本", // c1
+	"b": state.a + "日本", // c2
+	"c": size("日本"), // c3
+	"d": ["é", "ü"], // c4
+}
+-- open_rune.cel --
+{"é": [ // c
+1,
+]}
+-- want_open_rune.txt --
+{
+	"é": [ // c
+		1,
+	],
+}
+-- bytes_upper.cel --
+state.x.as(a, Br"\" + b"//x" + a // real
++ b"y"
+)
+-- want_bytes_upper.txt --
+state.x.as(a, // real
+	b"\134" + b"\057\057\170" + a + b"\171"
+)
+-- quad_quote.cel --
+[
+''''  x''', // c
+1,
+]
+-- want_quad_quote.txt --
+[
+	"'  x", // c
+	1,
+]
+-- triple_blank.cel --
+[
+"""a
+
+b""" + "c",
+]
+-- want_triple_blank.txt --
+[
+	"a\n\nb" + "c",
+]

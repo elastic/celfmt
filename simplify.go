@@ -19,7 +19,6 @@ package celfmt
 
 import (
 	"slices"
-	"strings"
 
 	"cel.dev/cel-go/common"
 	"cel.dev/cel-go/common/ast"
@@ -358,6 +357,7 @@ func asBool(e ast.Expr) (bool, bool) {
 // arguments. It returns whether it made a rewrite.
 func elimHasTernary(a *ast.AST, src common.Source) bool {
 	info := a.SourceInfo()
+	scan := scanLines(src)
 	fac := ast.NewExprFactory()
 	var rewritten []int64
 
@@ -368,18 +368,18 @@ func elimHasTernary(a *ast.AST, src common.Source) bool {
 	for _, id := range macroCallIDs(info) {
 		call, _ := info.GetMacroCall(id)
 		ast.PreOrderVisit(call, ast.NewExprVisitor(func(e ast.Expr) {
-			h, ok := rewriteHasTernary(e, info, src, fac)
+			h, ok := rewriteHasTernary(e, info, scan, fac)
 			if ok {
 				rewritten = append(rewritten, h)
 			}
 		}))
 	}
 	ast.PreOrderVisit(a.Expr(), ast.NewExprVisitor(func(e ast.Expr) {
-		h, ok := matchHasTernaryExpr(e, info, src, fac)
+		h, ok := matchHasTernaryExpr(e, info, scan, fac)
 		if !ok || placeholderExists(info, h) {
 			return
 		}
-		rewriteHasTernary(e, info, src, fac)
+		rewriteHasTernary(e, info, scan, fac)
 		rewritten = append(rewritten, h)
 	}))
 	for _, h := range rewritten {
@@ -392,8 +392,8 @@ func elimHasTernary(a *ast.AST, src common.Source) bool {
 
 // rewriteHasTernary rewrites e if it is a has(x.f) ? x.f : d conditional or
 // its negated form, and returns the ID of the has() call.
-func rewriteHasTernary(e ast.Expr, info *ast.SourceInfo, src common.Source, fac ast.ExprFactory) (int64, bool) {
-	h, ok := matchHasTernaryExpr(e, info, src, fac)
+func rewriteHasTernary(e ast.Expr, info *ast.SourceInfo, scan *lineScan, fac ast.ExprFactory) (int64, bool) {
+	h, ok := matchHasTernaryExpr(e, info, scan, fac)
 	if !ok {
 		return 0, false
 	}
@@ -408,7 +408,7 @@ func rewriteHasTernary(e ast.Expr, info *ast.SourceInfo, src common.Source, fac 
 
 // matchHasTernaryExpr returns the ID of the has() call if e is a
 // has(x.f) ? x.f : d conditional or its negated form that can be rewritten.
-func matchHasTernaryExpr(e ast.Expr, info *ast.SourceInfo, src common.Source, fac ast.ExprFactory) (int64, bool) {
+func matchHasTernaryExpr(e ast.Expr, info *ast.SourceInfo, scan *lineScan, fac ast.ExprFactory) (int64, bool) {
 	if e.Kind() != ast.CallKind {
 		return 0, false
 	}
@@ -421,7 +421,7 @@ func matchHasTernaryExpr(e ast.Expr, info *ast.SourceInfo, src common.Source, fa
 		return 0, false
 	}
 	hasSel, access, _ := matchHasTernary(presenceCond(args[0], info, fac), args[1], args[2])
-	if hasSel == nil || hasComment(src, info, access.ID()) || hasCommentInside(src, info, hasSel, args[2]) {
+	if hasSel == nil || hasComment(scan, info, access.ID()) || hasCommentInside(scan, info, hasSel, args[2]) {
 		return 0, false
 	}
 	return hasSel.ID(), true
@@ -479,15 +479,16 @@ func placeholderExists(info *ast.SourceInfo, id int64) bool {
 // the question mark, at the end of the true branch, and after the colon. The
 // simplified form has no position to attach them. Comments on lines of their
 // own are above the access or the false branch, and are not lost.
-func hasCommentInside(src common.Source, info *ast.SourceInfo, cond, els ast.Expr) bool {
+func hasCommentInside(scan *lineScan, info *ast.SourceInfo, cond, els ast.Expr) bool {
 	from := info.GetStartLocation(cond.ID()).Line()
 	to := info.GetStartLocation(els.ID()).Line()
 	for line := from; line < to; line++ {
-		text, ok := src.Snippet(line)
+		text, ok := scan.src.Snippet(line)
 		if !ok {
 			return false
 		}
-		if !strings.HasPrefix(strings.TrimSpace(text), "//") && commentIndex(text) >= 0 {
+		code, comment, _ := scan.split(line, text)
+		if comment != "" && code != "" {
 			return true
 		}
 	}
@@ -496,24 +497,27 @@ func hasCommentInside(src common.Source, info *ast.SourceInfo, cond, els ast.Exp
 
 // hasComment reports whether there are comment lines immediately preceding
 // the expression with the given ID in the source text.
-func hasComment(src common.Source, info *ast.SourceInfo, id int64) bool {
+func hasComment(scan *lineScan, info *ast.SourceInfo, id int64) bool {
 	start := info.GetStartLocation(id)
 	for line := start.Line() - 1; line > 0; line-- {
-		text, ok := src.Snippet(line)
+		text, ok := scan.src.Snippet(line)
 		if !ok {
 			return false
 		}
-		trimmed := strings.TrimSpace(text)
-		if trimmed == "" {
+		code, comment, _ := scan.split(line, text)
+		if scan.startsInString(line) {
+			return false
+		}
+		if code == "" && comment == "" {
 			continue
 		}
-		if comment, ok := parenLine(trimmed); ok {
+		if parenOnly(code) {
 			if comment == "" {
 				continue
 			}
 			return true
 		}
-		return strings.HasPrefix(trimmed, "//")
+		return code == "" && comment != ""
 	}
 	return false
 }
