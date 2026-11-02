@@ -64,6 +64,7 @@ func Format(dst io.Writer, ast *ast.AST, src common.Source, opts ...FormatOption
 	un := &formatter{
 		dst:      lenWriter{w: dst, indent: unparserOpts.indent},
 		src:      src,
+		scan:     scanLines(src),
 		info:     ast.SourceInfo(),
 		options:  unparserOpts,
 		comments: make(map[location]int64),
@@ -79,6 +80,7 @@ func Format(dst io.Writer, ast *ast.AST, src common.Source, opts ...FormatOption
 type formatter struct {
 	dst              lenWriter
 	src              common.Source
+	scan             *lineScan
 	info             *ast.SourceInfo
 	options          *unparserOption
 	lastWrappedIndex int
@@ -168,8 +170,9 @@ func (un *formatter) CommentBlock(id int64) []string {
 	skippedParen := false
 	for line := start.Line(); line > 0; line-- {
 		text, ok := un.src.Snippet(line)
-		comment := strings.TrimSpace(text)
-		if trailing, ok := parenLine(comment); ok && (trailing == "" || !first) {
+		code, comment, idx := un.scan.split(line, text)
+		inCode := !ok || un.scan.startsInString(line) || code != ""
+		if inCode && ok && parenOnly(code) && (comment == "" || !first) && !un.scan.startsInString(line) {
 			// Parentheses are not in the AST, so a comment above
 			// a line holding only an opening parenthesis belongs to
 			// the expression inside it, and so does a comment on that
@@ -178,12 +181,12 @@ func (un *formatter) CommentBlock(id int64) []string {
 			// parenthesis, which may be on a line of its own below the
 			// name of the function.
 			skippedParen = true
-			if trailing == "" {
+			if comment == "" {
 				continue
 			}
-			comment = trailing
+			inCode = false
 		}
-		if !ok || (comment != "" && !strings.HasPrefix(comment, "//")) {
+		if inCode {
 			if first {
 				first = false
 				continue
@@ -191,7 +194,7 @@ func (un *formatter) CommentBlock(id int64) []string {
 			break
 		}
 		first = false
-		loc := location{line, strings.Index(text, comment)}
+		loc := location{line, max(idx, 0)}
 		if cid, ok := un.comments[loc]; ok {
 			if cid != id {
 				return nil
@@ -239,20 +242,24 @@ func (un *formatter) CommentBlock(id int64) []string {
 	return comments
 }
 
-// parenLine returns whether the trimmed line s holds only opening
-// parentheses and an optional comment, and the comment if it has one.
-func parenLine(s string) (comment string, ok bool) {
-	rest := strings.TrimLeft(s, "( \t")
-	if !strings.Contains(s[:len(s)-len(rest)], "(") {
-		return "", false
-	}
-	if rest != "" && !strings.HasPrefix(rest, "//") {
-		return "", false
-	}
-	return rest, true
+// parenOnly returns whether the trimmed code of a line holds only opening
+// parentheses, and at least one.
+func parenOnly(code string) bool {
+	rest := strings.TrimLeft(code, "( \t")
+	return rest == "" && strings.Contains(code, "(")
 }
 
 func (un *formatter) Comment(id int64) string {
+	return un.commentAfter(id, false)
+}
+
+// commentAfter returns the comment, if any, at the end of the line where the
+// expression with the given id starts, after the end of the expression if it
+// ends on that line. A comment that follows a question mark belongs to the
+// conditional that it is in, and is only returned if question is set, so
+// that an expression that ends on the line, such as an argument, does not
+// take it.
+func (un *formatter) commentAfter(id int64, question bool) string {
 	if !un.options.pretty {
 		return ""
 	}
@@ -261,15 +268,21 @@ func (un *formatter) Comment(id int64) string {
 	if !ok {
 		return ""
 	}
-	stop := un.info.GetStopLocation(id)
-	if stop.Column() <= len(text) {
-		text = text[stop.Column():]
-	}
-	idx := commentIndex(text)
-	if idx < 0 {
+	idx := un.scan.commentIndex(start.Line())
+	if idx < 0 || idx > len(text) {
 		return ""
 	}
-	loc := location{start.Line(), stop.Column() + idx}
+	// The stop column is the start column plus the length of the token in
+	// bytes, so it is not a column in characters or an index in bytes. Add
+	// the difference to the index in bytes of the start.
+	stop := un.info.GetStopLocation(id)
+	if stop.Line() == start.Line() && idx < byteIndex(text, start.Column())+max(stop.Column()-start.Column(), 0) {
+		return ""
+	}
+	if !question && strings.HasSuffix(strings.TrimSpace(text[:idx]), "?") {
+		return ""
+	}
+	loc := location{start.Line(), idx}
 	if _, ok := un.comments[loc]; ok {
 		return ""
 	}
@@ -277,37 +290,15 @@ func (un *formatter) Comment(id int64) string {
 	return " // " + strings.TrimSpace(strings.TrimPrefix(text[idx:], "//"))
 }
 
-// commentIndex returns the index in text of the // that starts a comment, or
-// -1 if text has no comment. A // in a string does not start a comment.
-func commentIndex(text string) int {
-	var quote byte
-	for i := 0; i < len(text); i++ {
-		c := text[i]
-		switch {
-		case quote != 0:
-			switch c {
-			case '\\':
-				i++
-			case quote:
-				quote = 0
-			}
-		case c == '"' || c == '\'' || c == '`':
-			quote = c
-		case c == '/' && strings.HasPrefix(text[i:], "//"):
-			return i
-		}
-	}
-	return -1
-}
-
 // endComment returns the comment, if any, at the end of the line where the
-// expression starts, or else at the end of the line of its last leaf.
-func (un *formatter) endComment(expr ast.Expr) string {
-	c := un.Comment(expr.ID())
+// expression starts, or else at the end of the line of its last leaf. A
+// comment after a question mark is returned if question is set.
+func (un *formatter) endComment(expr ast.Expr, question bool) string {
+	c := un.commentAfter(expr.ID(), question)
 	if c != "" {
 		return c
 	}
-	return un.Comment(un.lastChild(expr).ID())
+	return un.commentAfter(un.lastChild(expr).ID(), question)
 }
 
 // OpenComment returns the comment, if any, that follows the opening
@@ -321,21 +312,17 @@ func (un *formatter) OpenComment(id int64) string {
 	if !ok {
 		return ""
 	}
-	rest := []rune(text)
-	if start.Column()+1 > len(rest) {
+	idx := un.scan.commentIndex(start.Line())
+	from := byteIndex(text, start.Column()+1)
+	if idx < from || idx > len(text) || strings.TrimSpace(text[from:idx]) != "" {
 		return ""
 	}
-	rest = rest[start.Column()+1:]
-	comment := strings.TrimSpace(string(rest))
-	if !strings.HasPrefix(comment, "//") {
-		return ""
-	}
-	loc := location{start.Line(), start.Column() + 1 + strings.Index(string(rest), "//")}
+	loc := location{start.Line(), idx}
 	if _, ok := un.comments[loc]; ok {
 		return ""
 	}
 	un.comments[loc] = id
-	return " // " + strings.TrimSpace(strings.TrimPrefix(comment, "//"))
+	return " // " + strings.TrimSpace(strings.TrimPrefix(text[idx:], "//"))
 }
 
 // ColonComment returns the comment, if any, that follows the colon between
@@ -358,11 +345,14 @@ func (un *formatter) ColonComment(from, to ast.Expr) string {
 		if !ok {
 			return ""
 		}
-		if !strings.HasPrefix(strings.TrimLeft(text, ")]} \t"), ":") {
+		if un.scan.startsInString(line) || !strings.HasPrefix(strings.TrimLeft(text, ")]} \t"), ":") {
 			continue
 		}
-		idx := colonCommentIndex(text)
-		if idx < 0 {
+		// The colon is the first one on the line, since only closing
+		// brackets come before it.
+		colon := strings.IndexByte(text, ':')
+		idx := un.scan.commentIndex(line)
+		if idx < colon || strings.TrimSpace(text[colon+1:idx]) != "" {
 			return ""
 		}
 		loc := location{line, idx}
@@ -373,28 +363,6 @@ func (un *formatter) ColonComment(from, to ast.Expr) string {
 		return " // " + strings.TrimSpace(strings.TrimPrefix(text[idx:], "//"))
 	}
 	return ""
-}
-
-// colonCommentIndex returns the index in line of the // that starts a
-// comment directly after the first colon, or -1 if there is no colon or it
-// is not followed by a comment. A comment that starts before the colon
-// makes the line a comment line. Between the branches of a conditional
-// there is nothing but the colon, closing parentheses and comments, so the
-// colon cannot be in a string.
-func colonCommentIndex(line string) int {
-	for i := 0; i < len(line); i++ {
-		switch {
-		case strings.HasPrefix(line[i:], "//"):
-			return -1
-		case line[i] == ':':
-			rest := strings.TrimLeft(line[i+1:], " \t")
-			if !strings.HasPrefix(rest, "//") {
-				return -1
-			}
-			return len(line) - len(rest)
-		}
-	}
-	return -1
 }
 
 func (un *formatter) visit(expr ast.Expr, macro bool) error {
@@ -524,7 +492,7 @@ func (un *formatter) visitCallConditional(expr ast.Expr) error {
 	if un.isMultiline(expr) {
 		un.WriteString(" ?")
 		un.indent++
-		un.WriteString(un.endComment(args[0]))
+		un.WriteString(un.endComment(args[0], true))
 		un.WriteNewLine()
 
 		// add parens if operand is a conditional itself.
@@ -536,7 +504,7 @@ func (un *formatter) visitCallConditional(expr ast.Expr) error {
 		}
 
 		un.indent--
-		un.WriteString(un.endComment(args[1]))
+		un.WriteString(un.endComment(args[1], false))
 		un.WriteNewLine()
 		un.WriteString(":")
 		colon := un.ColonComment(args[1], args[2])
@@ -1177,14 +1145,15 @@ func (un *formatter) hasCommentsForExpr(id int64) bool {
 	first := true
 	for line := start.Line(); line > 0; line-- {
 		text, ok := un.src.Snippet(line)
-		comment := strings.TrimSpace(text)
-		if trailing, ok := parenLine(comment); ok && (trailing == "" || !first) {
-			if trailing == "" {
+		code, comment, idx := un.scan.split(line, text)
+		inCode := !ok || un.scan.startsInString(line) || code != ""
+		if inCode && ok && parenOnly(code) && (comment == "" || !first) && !un.scan.startsInString(line) {
+			if comment == "" {
 				continue
 			}
-			comment = trailing
+			inCode = false
 		}
-		if !ok || (comment != "" && !strings.HasPrefix(comment, "//")) {
+		if inCode {
 			if first {
 				first = false
 				continue
@@ -1192,7 +1161,7 @@ func (un *formatter) hasCommentsForExpr(id int64) bool {
 			break
 		}
 		first = false
-		loc := location{line, strings.Index(text, comment)}
+		loc := location{line, max(idx, 0)}
 		if cid, ok := un.comments[loc]; ok {
 			if cid != id {
 				return false
