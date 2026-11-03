@@ -18,7 +18,7 @@
 package celfmt
 
 import (
-	"strings"
+	"slices"
 
 	"cel.dev/cel-go/common"
 	"cel.dev/cel-go/common/ast"
@@ -27,21 +27,29 @@ import (
 )
 
 // Simplify applies semantics-preserving simplifications to the AST:
-//   - inline single-use .as() bindings
+//   - inline single-use .as() bindings, unless the initial value calls a
+//     function that is not pure
 //   - eliminate boolean comparisons (x == true → x, x == false → !x)
 //   - rewrite has(x.f) ? x.f : d and !has(x.f) ? d : x.f → x.?f.orValue(d)
 //   - fold filter into comprehension: x.filter(v,c).map(v,t) → x.map(v,c,t)
 func Simplify(a *ast.AST, src common.Source) {
 	inlineAs(a)
 	elimBoolCmp(a)
-	elimHasTernary(a, src)
+	// A rewrite can remove a use of a variable that an .as() binds, which
+	// makes it one that can be inlined.
+	if elimHasTernary(a, src) {
+		inlineAs(a)
+	}
 	foldFilter(a)
 }
 
 // inlineAs finds .as() macro calls where the bound variable is used at most
 // once in the result expression, and replaces the comprehension with its
 // result (substituting the init expression for the single use). Zero-use
-// bindings are replaced with the bare result.
+// bindings are replaced with the bare result. A binding whose init
+// expression calls a function in impure is kept, since dropping the call or
+// moving it to where the variable is used changes when, how often or whether
+// it is made.
 func inlineAs(a *ast.AST) {
 	info := a.SourceInfo()
 	// Each inlining mutates the macro call map (clear, set, clear), so
@@ -49,7 +57,8 @@ func inlineAs(a *ast.AST) {
 	// unspecified map-iteration-after-mutation behaviour.
 	for {
 		inlined := false
-		for id, call := range info.MacroCalls() {
+		for _, id := range macroCallIDs(info) {
+			call, _ := info.GetMacroCall(id)
 			if call.Kind() != ast.CallKind {
 				continue
 			}
@@ -71,17 +80,19 @@ func inlineAs(a *ast.AST) {
 			result := c.Result()
 
 			n := countIdent(result, name)
-			if n > 1 {
+			if n > 1 || callsImpure(init) {
 				continue
 			}
 
-			if n == 1 {
-				substituteIdent(result, name, init, info)
+			// If the init expression was not substituted anywhere it is no
+			// longer in the tree, so drop its macro call entry. If it was,
+			// substituteIdent has copied the macro call to the use site,
+			// and the entry for the original stays, so that the formatter
+			// finds the original, which is next to the arguments and has
+			// the layout of the source.
+			if n == 0 {
+				info.ClearMacroCall(init.ID())
 			}
-			// The init expression is no longer in the tree, so drop its
-			// macro call entry. substituteIdent has already copied it to
-			// the use site if there was one.
-			info.ClearMacroCall(init.ID())
 
 			// Clear the outer .as() macro entry before any remap so we
 			// don't clobber a remapped inner entry that lands on the
@@ -90,13 +101,21 @@ func inlineAs(a *ast.AST) {
 
 			// If the result is a comprehension with its own macro call,
 			// the formatter will look it up by ID. After SetKindCase the
-			// content moves to comp's ID, so remap the entry (and
-			// substitute in the macro call expression, which is a
-			// separate tree).
-			if mcall, ok := info.GetMacroCall(result.ID()); ok {
-				if n == 1 {
-					substituteIdent(mcall, name, init, info)
+			// content moves to comp's ID, so remap the entry. The macro
+			// call expression is a separate tree, but it shares nodes
+			// with the result, so both are substituted in together.
+			if n == 1 {
+				trees := []ast.Expr{result}
+				if mcall, ok := info.GetMacroCall(result.ID()); ok {
+					trees = append(trees, mcall)
 				}
+				substituteIdent(name, init, info, trees...)
+			}
+			// Substituting can add a macro call at the ID of result, when
+			// result is the identifier that was replaced, so look for it
+			// after that.
+			mcall, hasMacro := info.GetMacroCall(result.ID())
+			if hasMacro {
 				info.SetMacroCall(comp.ID(), mcall)
 				info.ClearMacroCall(result.ID())
 			}
@@ -112,6 +131,55 @@ func inlineAs(a *ast.AST) {
 	}
 }
 
+// impure is the set of functions in the mito library that are not pure: they
+// make requests, read files or the clock, produce a different value on each
+// call, or change the state of something outside the program. CEL itself is
+// pure, so the language does not say when or how often a call is evaluated,
+// but for these functions it matters. Functions that are not in the set are
+// taken to be pure, so a function added to the library that has effects
+// should be added here.
+var impure = map[string]bool{
+	"@emit":                true,
+	"@emit_body":           true,
+	"@emit_cursor":         true,
+	"close":                true,
+	"debug":                true,
+	"dir":                  true,
+	"do_request":           true,
+	"file":                 true,
+	"get":                  true,
+	"head":                 true,
+	"now":                  true,
+	"post":                 true,
+	"rate_limit":           true,
+	"send_refval_to":       true,
+	"send_to":              true,
+	"sign_aws_from_env":    true,
+	"sign_aws_from_shared": true,
+	"sign_aws_from_static": true,
+	"uuid":                 true,
+
+	// Streams can be read once.
+	"decode_csv_stream_lazy":                 true,
+	"decode_csv_stream_lazy_no_header":       true,
+	"decode_json_stream_lazy":                true,
+	"decode_json_stream_lazy_string_numbers": true,
+	"decode_lines":                           true,
+	"stream_gzip":                            true,
+	"stream_zip":                             true,
+}
+
+// callsImpure returns whether expr calls a function in impure.
+func callsImpure(expr ast.Expr) bool {
+	var found bool
+	ast.PreOrderVisit(expr, ast.NewExprVisitor(func(e ast.Expr) {
+		if e.Kind() == ast.CallKind && impure[e.AsCall().FunctionName()] {
+			found = true
+		}
+	}))
+	return found
+}
+
 // replaceMacroPlaceholders replaces the placeholder nodes with the given ID
 // in all macro call expressions with the content of repl. A macro call that
 // takes another macro call as an argument refers to it by placeholder, so
@@ -125,6 +193,25 @@ func replaceMacroPlaceholders(info *ast.SourceInfo, id int64, repl ast.Expr) {
 			}
 		}))
 	}
+}
+
+// macroCallIDs returns the IDs of the macro calls in info in ascending order.
+// The rewrites that look for a macro call to change use it so that the result
+// does not depend on the order in which the map is iterated. The parser
+// expands a macro call after the macro calls in its arguments, so an inner
+// call has a lower ID than the call that contains it and is rewritten first.
+// That helps when the inner call is inlined too, as in x.as(a, y.as(x, a + x)),
+// where inlining a first would put the outer x into the scope of the inner x.
+// It does not help when the inner call stays, as in
+// x.as(a, y.as(x, [x, x, a])): the inner x is used twice, so inlining a puts
+// it in the scope of the inner x.
+func macroCallIDs(info *ast.SourceInfo) []int64 {
+	ids := make([]int64, 0, len(info.MacroCalls()))
+	for id := range info.MacroCalls() {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	return ids
 }
 
 // countIdent counts IdentKind nodes in expr whose name matches ident.
@@ -157,20 +244,35 @@ func countIdentInMacroTree(info *ast.SourceInfo, expr ast.Expr, ident string) in
 	return n
 }
 
-// substituteIdent replaces all IdentKind nodes named ident with replacement.
-// If info is non-nil and replacement has a macro call, the macro call is
-// copied to each substitution site so the formatter can find it by ID.
-func substituteIdent(expr ast.Expr, ident string, replacement ast.Expr, info *ast.SourceInfo) {
-	ast.PreOrderVisit(expr, ast.NewExprVisitor(func(e ast.Expr) {
-		if e.Kind() == ast.IdentKind && e.AsIdent() == ident {
-			e.SetKindCase(replacement)
-			if info != nil {
-				if mcall, ok := info.GetMacroCall(replacement.ID()); ok {
-					info.SetMacroCall(e.ID(), mcall)
-				}
+// substituteIdent replaces all IdentKind nodes named ident with replacement
+// in the trees. If info is non-nil and replacement has a macro call, the
+// macro call is copied to each substitution site so the formatter can find it
+// by ID.
+func substituteIdent(ident string, replacement ast.Expr, info *ast.SourceInfo, trees ...ast.Expr) {
+	// Find all of the sites before replacing any of them. The replacement
+	// may itself contain an identifier with the same name, for example in
+	// x.size().as(x, x + 1), and replacing while visiting would visit the
+	// replacement and replace that identifier too, without end. The trees
+	// can share nodes, such as a macro call and the comprehension it expands
+	// to, so a site is only replaced once.
+	var sites []ast.Expr
+	seen := make(map[ast.Expr]bool)
+	for _, tree := range trees {
+		ast.PreOrderVisit(tree, ast.NewExprVisitor(func(e ast.Expr) {
+			if e.Kind() == ast.IdentKind && e.AsIdent() == ident && !seen[e] {
+				seen[e] = true
+				sites = append(sites, e)
+			}
+		}))
+	}
+	for _, e := range sites {
+		e.SetKindCase(replacement)
+		if info != nil {
+			if mcall, ok := info.GetMacroCall(replacement.ID()); ok {
+				info.SetMacroCall(e.ID(), mcall)
 			}
 		}
-	}))
+	}
 }
 
 // substituteIdentInMacroTree replaces IdentKind nodes named ident with
@@ -248,73 +350,174 @@ func asBool(e ast.Expr) (bool, bool) {
 // elimHasTernary rewrites has(x.f) ? x.f : d → x.?f.orValue(d)
 // and !has(x.f) ? d : x.f → x.?f.orValue(d). The rewrite is skipped
 // when the field-access branch has preceding comments, since the
-// simplified form has no position to attach them. It is also skipped when
-// the has() test appears in any macro call expression, such as the body of
-// a map, filter or as call. The formatter prints the macro call's own copy
-// of the ternary, which still needs the has() macro call, so rewriting the
-// tree would only break it. Ternaries inside macro bodies are therefore
-// not simplified.
-func elimHasTernary(a *ast.AST, src common.Source) {
+// simplified form has no position to attach them, and when there is a
+// comment after the question mark, at the end of the true branch or after
+// the colon. It is also made in the trees of the macro calls, such as map,
+// filter and as, which are what the formatter writes for their targets and
+// arguments. It returns whether it made a rewrite.
+func elimHasTernary(a *ast.AST, src common.Source) bool {
 	info := a.SourceInfo()
+	scan := scanLines(src)
 	fac := ast.NewExprFactory()
-	inMacro := macroNodeIDs(info)
-	ast.PreOrderVisit(a.Expr(), ast.NewExprVisitor(func(e ast.Expr) {
-		if e.Kind() != ast.CallKind {
-			return
-		}
-		c := e.AsCall()
-		if c.FunctionName() != operators.Conditional {
-			return
-		}
-		args := c.Args()
-		if len(args) != 3 {
-			return
-		}
+	var rewritten []int64
 
-		hasSel, access, dflt := matchHasTernary(args[0], args[1], args[2])
-		if hasSel == nil {
-			return
-		}
-		if hasComment(src, info, access.ID()) || inMacro[hasSel.ID()] {
-			return
-		}
-
-		sel := hasSel.AsSelect()
-		optSel := fac.NewCall(hasSel.ID(), operators.OptSelect,
-			sel.Operand(), fac.NewLiteral(access.ID(), types.String(sel.FieldName())))
-		orVal := fac.NewMemberCall(e.ID(), "orValue", optSel, dflt)
-
-		e.SetKindCase(orVal)
-		info.ClearMacroCall(hasSel.ID())
-	}))
-}
-
-// macroNodeIDs returns the set of node IDs that appear within macro call
-// expressions.
-func macroNodeIDs(info *ast.SourceInfo) map[int64]bool {
-	ids := make(map[int64]bool)
-	for _, call := range info.MacroCalls() {
+	// A macro call is printed from its own tree, which holds a copy of each
+	// conditional in its arguments, so rewrite those as well. Do that first,
+	// since the expression is only rewritten if nothing in a macro call is
+	// left referring to its has() call.
+	for _, id := range macroCallIDs(info) {
+		call, _ := info.GetMacroCall(id)
 		ast.PreOrderVisit(call, ast.NewExprVisitor(func(e ast.Expr) {
-			ids[e.ID()] = true
+			h, ok := rewriteHasTernary(e, info, scan, fac)
+			if ok {
+				rewritten = append(rewritten, h)
+			}
 		}))
 	}
-	return ids
+	ast.PreOrderVisit(a.Expr(), ast.NewExprVisitor(func(e ast.Expr) {
+		h, ok := matchHasTernaryExpr(e, info, scan, fac)
+		if !ok || placeholderExists(info, h) {
+			return
+		}
+		rewriteHasTernary(e, info, scan, fac)
+		rewritten = append(rewritten, h)
+	}))
+	for _, h := range rewritten {
+		if !placeholderExists(info, h) {
+			info.ClearMacroCall(h)
+		}
+	}
+	return len(rewritten) != 0
+}
+
+// rewriteHasTernary rewrites e if it is a has(x.f) ? x.f : d conditional or
+// its negated form, and returns the ID of the has() call.
+func rewriteHasTernary(e ast.Expr, info *ast.SourceInfo, scan *lineScan, fac ast.ExprFactory) (int64, bool) {
+	h, ok := matchHasTernaryExpr(e, info, scan, fac)
+	if !ok {
+		return 0, false
+	}
+	args := e.AsCall().Args()
+	hasSel, access, dflt := matchHasTernary(presenceCond(args[0], info, fac), args[1], args[2])
+	sel := hasSel.AsSelect()
+	optSel := fac.NewCall(hasSel.ID(), operators.OptSelect,
+		sel.Operand(), fac.NewLiteral(access.ID(), types.String(sel.FieldName())))
+	e.SetKindCase(fac.NewMemberCall(e.ID(), "orValue", optSel, dflt))
+	return h, true
+}
+
+// matchHasTernaryExpr returns the ID of the has() call if e is a
+// has(x.f) ? x.f : d conditional or its negated form that can be rewritten.
+func matchHasTernaryExpr(e ast.Expr, info *ast.SourceInfo, scan *lineScan, fac ast.ExprFactory) (int64, bool) {
+	if e.Kind() != ast.CallKind {
+		return 0, false
+	}
+	c := e.AsCall()
+	if c.FunctionName() != operators.Conditional {
+		return 0, false
+	}
+	args := c.Args()
+	if len(args) != 3 {
+		return 0, false
+	}
+	hasSel, access, _ := matchHasTernary(presenceCond(args[0], info, fac), args[1], args[2])
+	if hasSel == nil || hasComment(scan, info, access.ID()) || hasCommentInside(scan, info, hasSel, args[2]) {
+		return 0, false
+	}
+	return hasSel.ID(), true
+}
+
+// presenceCond returns cond with any has() call in it that is a placeholder
+// in a macro call replaced by the presence test it stands for. In the AST a
+// has() call is already a presence test.
+func presenceCond(cond ast.Expr, info *ast.SourceInfo, fac ast.ExprFactory) ast.Expr {
+	if isNegation(cond) {
+		arg := presenceTest(cond.AsCall().Args()[0], info, fac)
+		return fac.NewCall(cond.ID(), operators.LogicalNot, arg)
+	}
+	return presenceTest(cond, info, fac)
+}
+
+func isNegation(e ast.Expr) bool {
+	return e.Kind() == ast.CallKind && e.AsCall().FunctionName() == operators.LogicalNot && len(e.AsCall().Args()) == 1
+}
+
+// presenceTest returns the presence test that e stands for if e is a
+// placeholder for a has() macro call, and e otherwise.
+func presenceTest(e ast.Expr, info *ast.SourceInfo, fac ast.ExprFactory) ast.Expr {
+	if e.Kind() != ast.UnspecifiedExprKind {
+		return e
+	}
+	call, ok := info.GetMacroCall(e.ID())
+	if !ok || call.Kind() != ast.CallKind || call.AsCall().FunctionName() != "has" || len(call.AsCall().Args()) != 1 {
+		return e
+	}
+	sel := call.AsCall().Args()[0]
+	if sel.Kind() != ast.SelectKind {
+		return e
+	}
+	return fac.NewPresenceTest(e.ID(), sel.AsSelect().Operand(), sel.AsSelect().FieldName())
+}
+
+// placeholderExists returns whether a macro call has a placeholder with the
+// given ID.
+func placeholderExists(info *ast.SourceInfo, id int64) bool {
+	var found bool
+	for _, call := range info.MacroCalls() {
+		ast.PreOrderVisit(call, ast.NewExprVisitor(func(e ast.Expr) {
+			if e.Kind() == ast.UnspecifiedExprKind && e.ID() == id {
+				found = true
+			}
+		}))
+	}
+	return found
+}
+
+// hasCommentInside reports whether there is a comment after code on the
+// lines of a conditional from the one where its condition starts to the one
+// before the one where its false branch starts. Those are the comments after
+// the question mark, at the end of the true branch, and after the colon. The
+// simplified form has no position to attach them. Comments on lines of their
+// own are above the access or the false branch, and are not lost.
+func hasCommentInside(scan *lineScan, info *ast.SourceInfo, cond, els ast.Expr) bool {
+	from := info.GetStartLocation(cond.ID()).Line()
+	to := info.GetStartLocation(els.ID()).Line()
+	for line := from; line < to; line++ {
+		text, ok := scan.src.Snippet(line)
+		if !ok {
+			return false
+		}
+		code, comment, _ := scan.split(line, text)
+		if comment != "" && code != "" {
+			return true
+		}
+	}
+	return false
 }
 
 // hasComment reports whether there are comment lines immediately preceding
 // the expression with the given ID in the source text.
-func hasComment(src common.Source, info *ast.SourceInfo, id int64) bool {
+func hasComment(scan *lineScan, info *ast.SourceInfo, id int64) bool {
 	start := info.GetStartLocation(id)
 	for line := start.Line() - 1; line > 0; line-- {
-		text, ok := src.Snippet(line)
+		text, ok := scan.src.Snippet(line)
 		if !ok {
 			return false
 		}
-		trimmed := strings.TrimSpace(text)
-		if trimmed == "" {
+		code, comment, _ := scan.split(line, text)
+		if scan.startsInString(line) {
+			return false
+		}
+		if code == "" && comment == "" {
 			continue
 		}
-		return strings.HasPrefix(trimmed, "//")
+		if parenOnly(code) {
+			if comment == "" {
+				continue
+			}
+			return true
+		}
+		return code == "" && comment != ""
 	}
 	return false
 }
@@ -384,7 +587,8 @@ func foldFilter(a *ast.AST) {
 	fac := ast.NewExprFactory()
 	for {
 		folded := false
-		for id, call := range info.MacroCalls() {
+		for _, id := range macroCallIDs(info) {
+			call, _ := info.GetMacroCall(id)
 			if call.Kind() != ast.CallKind {
 				continue
 			}
@@ -436,7 +640,19 @@ func foldFilter(a *ast.AST) {
 			}
 			newArgs := []ast.Expr{iterVar, filterCond, args[1]}
 			newMCall := fac.NewMemberCall(0, fn, filterTarget, newArgs...)
-			info.SetMacroCall(id, newMCall)
+			// Inlining an .as() copies the macro call of the init
+			// expression to the ID of the place where the variable was
+			// used, so the same macro call can be registered under more
+			// than one ID. Rewrite all of them.
+			ids := []int64{id}
+			for other, mc := range info.MacroCalls() {
+				if other != id && mc == call {
+					ids = append(ids, other)
+				}
+			}
+			for _, other := range ids {
+				info.SetMacroCall(other, newMCall)
+			}
 			info.ClearMacroCall(target.ID())
 
 			// Update the AST: skip the filter comprehension so the
@@ -445,7 +661,7 @@ func foldFilter(a *ast.AST) {
 			// stays at its original ID — the new macro tree references
 			// it there via an unspecified-expr placeholder.
 			ast.PreOrderVisit(a.Expr(), ast.NewExprVisitor(func(e ast.Expr) {
-				if e.ID() != id || e.Kind() != ast.ComprehensionKind {
+				if !slices.Contains(ids, e.ID()) || e.Kind() != ast.ComprehensionKind {
 					return
 				}
 				iterRange := e.AsComprehension().IterRange()
