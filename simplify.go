@@ -165,7 +165,9 @@ var impure = map[string]bool{
 	"decode_json_stream_lazy":                true,
 	"decode_json_stream_lazy_string_numbers": true,
 	"decode_lines":                           true,
+	"stream_bzip2":                           true,
 	"stream_gzip":                            true,
+	"stream_tar":                             true,
 	"stream_zip":                             true,
 }
 
